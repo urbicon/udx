@@ -1,6 +1,6 @@
 /** Gepinnte Versionen, die `udx init`/`udx sync` in Consumer-Projekte schreiben. */
 export const VERSIONS = {
-  '@biomejs/biome': '^2.4.0',
+  '@biomejs/biome': '^2.4.16',
   '@commitlint/cli': '^21.0.1',
   lefthook: '^1.8.0',
   'git-cliff': '^2.13.1',

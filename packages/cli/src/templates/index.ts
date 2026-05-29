@@ -1,6 +1,7 @@
 import bumpSh from '../assets/bump.sh' with { type: 'text' };
 import claudeTpl from '../assets/CLAUDE.md.tpl' with { type: 'text' };
 import cliffToml from '../assets/cliff.toml' with { type: 'text' };
+import { VERSIONS } from '../lib/versions.ts';
 
 export interface RenderCtx {
   svelte: boolean;
@@ -22,7 +23,8 @@ export interface FileTemplate {
   render: (ctx: RenderCtx) => string;
 }
 
-const BIOME_SCHEMA = 'https://biomejs.dev/schemas/2.4.16/schema.json';
+// Schema-Version aus der gepinnten Biome-Version ableiten (eine Wahrheitsquelle).
+const BIOME_SCHEMA = `https://biomejs.dev/schemas/${VERSIONS['@biomejs/biome'].replace(/^[\^~]/, '')}/schema.json`;
 
 function renderLefthook(ctx: RenderCtx): string {
   const sveltePrettier = ctx.svelte

@@ -16,8 +16,6 @@ export interface ProjectContext {
   cwd: string;
   projectName: string;
   svelte: boolean;
-  isMonorepo: boolean;
-  hasPackageJson: boolean;
   pkg: PackageJson;
 }
 
@@ -29,15 +27,12 @@ function isSvelteProject(pkg: PackageJson): boolean {
 /** Liest den Projektkontext aus cwd. `svelteOverride` erzwingt die Svelte-Erkennung. */
 export function detectContext(cwd: string, svelteOverride?: boolean): ProjectContext {
   const pkgPath = abs(cwd, 'package.json');
-  const hasPackageJson = exists(pkgPath);
-  const pkg: PackageJson = hasPackageJson ? readJson<PackageJson>(pkgPath) : {};
+  const pkg: PackageJson = exists(pkgPath) ? readJson<PackageJson>(pkgPath) : {};
 
   return {
     cwd,
     projectName: pkg.name ?? basename(cwd),
     svelte: svelteOverride ?? isSvelteProject(pkg),
-    isMonorepo: pkg.workspaces !== undefined,
-    hasPackageJson,
     pkg
   };
 }

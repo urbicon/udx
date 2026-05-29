@@ -1,3 +1,4 @@
+import { basename } from 'node:path';
 import { applyFiles, ensureNpmrc, type FileResult } from '../lib/apply.ts';
 import { c } from '../lib/colors.ts';
 import { detectContext, type PackageJson, type ProjectContext } from '../lib/detect.ts';
@@ -12,12 +13,18 @@ export interface HarnessFlags {
   svelte: boolean | undefined;
 }
 
-function ensurePackageJson(cwd: string, name: string, dryRun: boolean): void {
+function ensurePackageJson(cwd: string, dryRun: boolean): void {
   const path = abs(cwd, 'package.json');
   if (exists(path)) return;
   log.warn('keine package.json gefunden — lege eine minimale an');
   if (dryRun) return;
-  writeJson(path, { name, version: '0.0.0', type: 'module', private: true, scripts: {} });
+  writeJson(path, {
+    name: basename(cwd),
+    version: '0.0.0',
+    type: 'module',
+    private: true,
+    scripts: {}
+  });
 }
 
 function patchPkg(ctx: ProjectContext, dryRun: boolean, force: boolean): void {
@@ -71,7 +78,7 @@ function printFooter(mode: 'init' | 'sync', ctx: ProjectContext, flags: HarnessF
 }
 
 export function runHarness(mode: 'init' | 'sync', flags: HarnessFlags): number {
-  ensurePackageJson(flags.cwd, detectContext(flags.cwd, flags.svelte).projectName, flags.dryRun);
+  ensurePackageJson(flags.cwd, flags.dryRun);
   const ctx = detectContext(flags.cwd, flags.svelte);
 
   const label = mode === 'init' ? 'udx init' : 'udx sync';
