@@ -64,8 +64,10 @@ function printFooter(mode: 'init' | 'sync', ctx: ProjectContext, flags: HarnessF
   }
   if (mode === 'init') {
     log.title('Nächste Schritte');
-    log.info(`1. ${c.cyan('bun install')}`);
-    log.info(`2. ${c.cyan('bunx lefthook install')} ${c.gray('(richtet die Git-Hooks ein)')}`);
+    log.info(
+      `1. ${c.cyan('export CODEBERG_TOKEN=…')} ${c.gray('(Zugriff auf die @urbicon-Registry)')}`
+    );
+    log.info(`2. ${c.cyan('bun install')} ${c.gray('(Deps + Git-Hooks via prepare-Script)')}`);
     log.info(`3. Scopes in ${c.cyan('commitlint.config.mjs')} ergänzen`);
     if (ctx.svelte)
       log.info(
