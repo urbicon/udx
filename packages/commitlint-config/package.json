@@ -1,0 +1,30 @@
+{
+  "name": "@urbicon/commitlint-config",
+  "version": "0.1.0",
+  "description": "Geteilte commitlint-Konfiguration (Conventional Commits) mit Scope-Factory",
+  "type": "module",
+  "author": "Felix Urban",
+  "license": "MIT",
+  "publishConfig": {
+    "registry": "https://codeberg.org/api/packages/urbicon/npm/"
+  },
+  "main": "index.js",
+  "types": "index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./index.d.ts",
+      "default": "./index.js"
+    }
+  },
+  "files": [
+    "index.js",
+    "index.d.ts"
+  ],
+  "dependencies": {
+    "@commitlint/config-conventional": "^21.0.1"
+  },
+  "scripts": {
+    "check": "true",
+    "test": "true"
+  }
+}

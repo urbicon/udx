@@ -1,0 +1,8 @@
+{
+  "name": "urbicon-udx",
+  "description": "Skills & Agents für das urbicon-Entwicklungs-Harness (docs-review u. a.)",
+  "version": "0.1.0",
+  "author": {
+    "name": "Felix Urban"
+  }
+}

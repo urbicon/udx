@@ -1,0 +1,20 @@
+{
+  "name": "@urbicon/biome-config",
+  "version": "0.1.0",
+  "description": "Geteilte Biome-Basiskonfiguration (Formatter + Linter) für Bun/Svelte-Projekte",
+  "author": "Felix Urban",
+  "license": "MIT",
+  "publishConfig": {
+    "registry": "https://codeberg.org/api/packages/urbicon/npm/"
+  },
+  "files": [
+    "biome-base.json"
+  ],
+  "exports": {
+    "./biome-base.json": "./biome-base.json"
+  },
+  "scripts": {
+    "check": "true",
+    "test": "true"
+  }
+}
