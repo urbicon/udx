@@ -1,7 +1,4 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
-  "extends": ["@urbicon/biome-config/biome-base.json"],
-  "files": {
-    "includes": ["**", "!**/dist", "!**/node_modules", "!**/CHANGELOG.md"]
-  }
+  "extends": ["@urbicon/biome-config/biome-base.json"]
 }

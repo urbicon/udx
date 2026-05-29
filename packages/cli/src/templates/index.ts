@@ -54,8 +54,9 @@ function renderBiome(ctx: RenderCtx): string {
     extends: ['@urbicon/biome-config/biome-base.json']
   };
   if (ctx.svelte) {
-    // .svelte übernimmt Prettier; alles andere Biome.
-    config.files = { includes: ['**', '!**/*.svelte'] };
+    // .svelte übernimmt Prettier; alles andere Biome. Der CHANGELOG-Ausschluss aus
+    // biome-base muss hier wiederholt werden, da files.includes das Base überschreibt.
+    config.files = { includes: ['**', '!**/*.svelte', '!**/CHANGELOG.md'] };
   }
   return `${JSON.stringify(config, null, 2)}\n`;
 }
