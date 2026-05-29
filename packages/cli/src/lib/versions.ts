@@ -1,3 +1,13 @@
+import cliPkg from '../../package.json' with { type: 'json' };
+
+/**
+ * Die @urbicon-Config-Pakete sind unified versioniert — sie tragen stets dieselbe
+ * Version wie diese CLI (siehe scripts/bump.sh). Daher aus der eigenen package.json
+ * ableiten statt hartcodieren: ein Release zieht die Consumer-Pins automatisch nach
+ * (vorausgesetzt ein frischer Build, den prepublishOnly garantiert).
+ */
+const SELF = `^${cliPkg.version}`;
+
 /** Gepinnte Versionen, die `udx init`/`udx sync` in Consumer-Projekte schreiben. */
 export const VERSIONS = {
   '@biomejs/biome': '^2.4.16',
@@ -7,9 +17,9 @@ export const VERSIONS = {
   '@types/node': '^25.9.1',
   'bun-types': '^1.3.14',
   typescript: '^6.0.3',
-  '@urbicon/biome-config': '^0.1.0',
-  '@urbicon/commitlint-config': '^0.1.0',
-  '@urbicon/tsconfig': '^0.1.0',
+  '@urbicon/biome-config': SELF,
+  '@urbicon/commitlint-config': SELF,
+  '@urbicon/tsconfig': SELF,
   // nur Svelte-Projekte
   prettier: '^3.8.3',
   'prettier-plugin-svelte': '^4.0.1',
