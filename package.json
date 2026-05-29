@@ -19,6 +19,7 @@
     "bump": "bash scripts/bump.sh patch",
     "bump:minor": "bash scripts/bump.sh minor",
     "bump:major": "bash scripts/bump.sh major",
+    "release:publish": "bash scripts/publish.sh",
     "changelog": "git-cliff --output CHANGELOG.md",
     "prepare": "lefthook install"
   },

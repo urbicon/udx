@@ -72,8 +72,11 @@ Changelog (git-cliff) + annotated Tag. Push mit `git push --follow-tags`.
 
 ## Distribution
 
-`@urbicon/*` → Codebergs npm-Registry (`bunfig.toml` `[install.scopes]`, Auth via
-`CODEBERG_TOKEN`). Privates Repo ⇒ Token auch zum Installieren nötig. Veröffentlichen
-pro Paket mit `bun publish` (Config-Pakete vor der CLI); `versions.ts` zieht die
-`@urbicon/*`-Pins automatisch aus der eigenen Version nach.
+`@urbicon/*` → Codebergs npm-Registry (privat ⇒ Token auch zum Installieren nötig).
+Auth-Aufteilung: `bun install` nutzt `bunfig.toml` `[install.scopes]` (token),
+`bun publish` nutzt `.npmrc` (`:_authToken=$CODEBERG_TOKEN`) — bunfig gilt dort nicht;
+Bun interpoliert `$VAR`, nicht `${VAR}`. Beide referenzieren nur `$CODEBERG_TOKEN`
+(Env/.env), kein Secret. Release: `bun run bump` → `bun run release:publish`
+(Config-Pakete vor der CLI). `versions.ts` zieht die `@urbicon/*`-Pins automatisch
+aus der eigenen Version nach.
 Claude-Plugin → Marketplace `.claude-plugin/marketplace.json` (Repo-Root).

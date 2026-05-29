@@ -59,18 +59,22 @@ bun run lint                           # Biome
 
 ## Veröffentlichen (Codeberg-Registry)
 
-Die `@urbicon/*`-Pakete liegen in Codebergs (privater) npm-Registry; `CODEBERG_TOKEN`
-muss gesetzt sein (Scope-Config in `bunfig.toml`, Token via Env/`.env`).
+Die `@urbicon/*`-Pakete liegen in Codebergs (privater) npm-Registry. Voraussetzung:
+`CODEBERG_TOKEN` (Forgejo-PAT mit Scope `package: read+write`) in der Umgebung oder
+einer gitignorten `.env`.
+
+**Auth-Aufteilung (Bun-bedingt):**
+- **Installieren** zieht den Token aus `bunfig.toml` (`[install.scopes]`).
+- **Publizieren** zieht ihn aus `.npmrc` (`…:_authToken=$CODEBERG_TOKEN`) — `bun publish`
+  liest `bunfig.toml` dafür nicht. Beide Dateien enthalten nur die Env-Referenz, kein Secret.
 
 ```bash
 # 1. Release vorbereiten (Version + Changelog + Tag, unified über alle Pakete)
-bun run bump            # oder bump:minor / bump:major
+bun run bump                    # oder bump:minor / bump:major
 
-# 2. Pro Paket publizieren — Config-Pakete zuerst, dann die CLI
-( cd packages/tsconfig         && bun publish )
-( cd packages/biome-config     && bun publish )
-( cd packages/commitlint-config && bun publish )
-( cd packages/cli              && bun publish )   # prepublishOnly baut dist/ frisch
+# 2. Vorschau, dann publizieren (Config-Pakete vor der CLI, CLI baut dist/ via prepublishOnly)
+bun run release:publish --dry-run
+bun run release:publish
 
 # 3. Tags pushen
 git push --follow-tags
