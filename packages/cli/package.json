@@ -15,11 +15,12 @@
     "dist/**/*"
   ],
   "scripts": {
-    "build": "bun build ./src/bin/udx.ts --target=bun --outdir=dist/bin && chmod +x dist/bin/udx.js",
+    "build": "bun build ./src/bin/udx.ts --target=bun --outdir=dist/bin --minify --sourcemap=linked && chmod +x dist/bin/udx.js",
     "dev": "bun run ./src/bin/udx.ts",
     "check": "tsc --noEmit",
     "test": "bun test",
-    "clean": "rm -rf dist node_modules"
+    "clean": "rm -rf dist node_modules",
+    "prepublishOnly": "bun run build"
   },
   "keywords": [
     "urbicon",
