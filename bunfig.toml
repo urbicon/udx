@@ -1,0 +1,4 @@
+# @urbicon-Pakete aus Codebergs Registry. Token via Env-Var (z. B. gitignorte .env):
+#   export CODEBERG_TOKEN=<token>
+[install.scopes]
+"@urbicon" = { url = "https://codeberg.org/api/packages/urbicon/npm/", token = "$CODEBERG_TOKEN" }

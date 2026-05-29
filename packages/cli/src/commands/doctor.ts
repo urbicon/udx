@@ -1,3 +1,4 @@
+import { URBICON_REGISTRY } from '../lib/apply.ts';
 import { c } from '../lib/colors.ts';
 import { detectContext } from '../lib/detect.ts';
 import { abs, exists, readText } from '../lib/fs.ts';
@@ -41,10 +42,10 @@ export function runDoctor(flags: DoctorFlags): number {
 
   log.plain();
   log.step('Registry');
-  const npmrc = abs(ctx.cwd, '.npmrc');
-  if (exists(npmrc) && readText(npmrc).includes('@urbicon:registry='))
-    pass('.npmrc Registry-Zeile');
-  else fail('.npmrc Registry-Zeile fehlt');
+  const bunfig = abs(ctx.cwd, 'bunfig.toml');
+  if (exists(bunfig) && readText(bunfig).includes(URBICON_REGISTRY))
+    pass('bunfig.toml @urbicon-Registry');
+  else fail('bunfig.toml @urbicon-Registry fehlt');
 
   log.plain();
   log.step('package.json');

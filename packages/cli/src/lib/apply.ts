@@ -63,22 +63,44 @@ export function applyFiles(cwd: string, ctx: RenderCtx, opts: ApplyOptions): Fil
   return results;
 }
 
-const NPMRC_LINE = '@urbicon:registry=https://codeberg.org/api/packages/urbicon/npm/';
+export const URBICON_REGISTRY = 'https://codeberg.org/api/packages/urbicon/npm/';
+/** Scope-Zeile für bunfig.toml. Token via Env-Var — privates Repo ⇒ auch zum Installieren nötig. */
+export const BUNFIG_SCOPE_LINE = `"@urbicon" = { url = "${URBICON_REGISTRY}", token = "$CODEBERG_TOKEN" }`;
+const BUNFIG_BLOCK = `# @urbicon-Pakete aus Codebergs Registry. Token via Env-Var (z. B. gitignorte .env):
+#   export CODEBERG_TOKEN=<token>
+[install.scopes]
+${BUNFIG_SCOPE_LINE}
+`;
 
-export function ensureNpmrc(cwd: string, dryRun: boolean): FileResult {
-  const target = abs(cwd, '.npmrc');
+/**
+ * Stellt die @urbicon-Registry in bunfig.toml sicher (Bun-natives Pendant zu .npmrc).
+ * Additive Idempotenz: erkennt eine bestehende Konfiguration an der Registry-URL. Einen
+ * vorhandenen [install.scopes]-Block erweitert die Funktion NICHT automatisch (TOML erlaubt
+ * keinen zweiten Tabellen-Header) — sie meldet die zu ergänzende Zeile stattdessen.
+ */
+export function ensureBunfig(cwd: string, dryRun: boolean): FileResult {
+  const dest = 'bunfig.toml';
+  const target = abs(cwd, dest);
 
   if (!exists(target)) {
-    if (dryRun) return { dest: '.npmrc', action: 'would-create' };
-    writeText(target, `${NPMRC_LINE}\n`);
-    return { dest: '.npmrc', action: 'created' };
+    if (dryRun) return { dest, action: 'would-create' };
+    writeText(target, BUNFIG_BLOCK);
+    return { dest, action: 'created' };
   }
 
   const content = readText(target);
-  if (content.includes('@urbicon:registry=')) return { dest: '.npmrc', action: 'unchanged' };
+  if (content.includes(URBICON_REGISTRY)) return { dest, action: 'unchanged' };
 
-  if (dryRun) return { dest: '.npmrc', action: 'would-update', note: 'Registry-Zeile fehlt' };
-  const sep = content.endsWith('\n') ? '' : '\n';
-  writeText(target, `${content}${sep}${NPMRC_LINE}\n`);
-  return { dest: '.npmrc', action: 'updated', note: 'Registry-Zeile ergänzt' };
+  if (/^\s*\[install\.scopes\]/m.test(content)) {
+    return {
+      dest,
+      action: 'skipped',
+      note: `@urbicon-Scope manuell ergänzen: ${BUNFIG_SCOPE_LINE}`
+    };
+  }
+
+  if (dryRun) return { dest, action: 'would-update', note: '[install.scopes] fehlt' };
+  const sep = content.endsWith('\n') ? '\n' : '\n\n';
+  writeText(target, `${content}${sep}${BUNFIG_BLOCK}`);
+  return { dest, action: 'updated', note: '[install.scopes] ergänzt' };
 }

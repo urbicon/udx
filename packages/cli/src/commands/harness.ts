@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import { applyFiles, ensureNpmrc, type FileResult } from '../lib/apply.ts';
+import { applyFiles, ensureBunfig, type FileResult } from '../lib/apply.ts';
 import { c } from '../lib/colors.ts';
 import { detectContext, type PackageJson, type ProjectContext } from '../lib/detect.ts';
 import { abs, exists, readJson, writeJson } from '../lib/fs.ts';
@@ -92,7 +92,7 @@ export function runHarness(mode: 'init' | 'sync', flags: HarnessFlags): number {
     dryRun: flags.dryRun,
     force: flags.force
   });
-  results.push(ensureNpmrc(ctx.cwd, flags.dryRun));
+  results.push(ensureBunfig(ctx.cwd, flags.dryRun));
   for (const r of results) reportAction(r.action, r.dest, r.note);
 
   patchPkg(ctx, flags.dryRun, flags.force);
