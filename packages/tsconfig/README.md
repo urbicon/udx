@@ -8,7 +8,7 @@ Geteilte TypeScript-Basiskonfiguration für Bun/Svelte-Projekte.
 bun add -D @urbicon/tsconfig
 ```
 
-(Setzt eine `.npmrc` mit `@urbicon:registry=https://codeberg.org/api/packages/urbicon/npm/` voraus.)
+(Setzt eine `bunfig.toml` mit dem `@urbicon`-Scope auf `https://codeberg.org/api/packages/urbicon/npm/` voraus — legt `udx init` an.)
 
 ## Verwendung
 

@@ -19,24 +19,26 @@ kopiert wurden — inklusive Mechanismus, um Verbesserungen wieder **zurückzusp
 1. **Erweiterbar** (Biome, commitlint, tsconfig) → als Pakete; Update via
    `bun update`. Inhalt lebt zentral im Paket.
 2. **Müssen physisch existieren** (`cliff.toml`, `lefthook.yml`, `scripts/bump.sh`,
-   `.npmrc`) → schreibt/aktualisiert die `udx`-CLI. `udx sync` zieht Änderungen nach.
+   `bunfig.toml`) → schreibt/aktualisiert die `udx`-CLI. `udx sync` zieht Änderungen nach.
 
 ## Schnellstart in einem Projekt
 
 ```bash
-# 1. Registry bekanntmachen (einmalig pro Projekt, macht udx init auch selbst)
-echo '@urbicon:registry=https://codeberg.org/api/packages/urbicon/npm/' >> .npmrc
+# Voraussetzung: Zugriff auf die (private) @urbicon-Registry
+export CODEBERG_TOKEN=<dein-codeberg-token>   # z. B. in einer gitignorten .env
 
-# 2. Harness einrichten
+# 1. Harness einrichten — legt bunfig.toml mit der @urbicon-Registry selbst an
 bunx @urbicon/udx init        # oder: udx init (global installiert)
-bun install
-bunx lefthook install
+bun install                   # Deps + Git-Hooks (via prepare-Script)
 
-# 3. Später Verbesserungen nachziehen
+# 2. Später Verbesserungen nachziehen
 udx sync --dry-run            # Vorschau
-udx sync                      # übernehmen
+udx sync                      # übernehmen (--force aktualisiert auch devDep-Pins)
 udx doctor                    # Drift prüfen
 ```
+
+> Solange `@urbicon/udx` noch nicht publiziert ist, greift `bunx @urbicon/udx` nicht —
+> siehe [Erst-Bootstrap](#veröffentlichen-codeberg-registry).
 
 ## Stack-Entscheidungen
 
@@ -55,5 +57,25 @@ bun --filter='@urbicon/udx' run test    # CLI testen
 bun run lint                           # Biome
 ```
 
-Veröffentlichen in Codebergs npm-Registry: `CODEBERG_TOKEN` setzen, dann je Paket
-`bun publish` (bzw. via Release-Pipeline). Siehe `.npmrc`.
+## Veröffentlichen (Codeberg-Registry)
+
+Die `@urbicon/*`-Pakete liegen in Codebergs (privater) npm-Registry; `CODEBERG_TOKEN`
+muss gesetzt sein (Scope-Config in `bunfig.toml`, Token via Env/`.env`).
+
+```bash
+# 1. Release vorbereiten (Version + Changelog + Tag, unified über alle Pakete)
+bun run bump            # oder bump:minor / bump:major
+
+# 2. Pro Paket publizieren — Config-Pakete zuerst, dann die CLI
+( cd packages/tsconfig         && bun publish )
+( cd packages/biome-config     && bun publish )
+( cd packages/commitlint-config && bun publish )
+( cd packages/cli              && bun publish )   # prepublishOnly baut dist/ frisch
+
+# 3. Tags pushen
+git push --follow-tags
+```
+
+**Erst-Bootstrap:** `@urbicon/udx` lässt sich nicht via `bunx @urbicon/udx` beziehen,
+solange es nicht publiziert ist. Bis dahin aus einem Klon heraus arbeiten —
+`bun run packages/cli/src/bin/udx.ts <befehl>` oder `cd packages/cli && bun link`.

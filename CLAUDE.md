@@ -24,7 +24,7 @@ extendet `@urbicon/biome-config` usw.).
 
 1. **Erweiterbar** → Config-Pakete; Inhalt lebt im Paket, Update via Versionsbump.
 2. **Müssen physisch existieren** (`cliff.toml`, `lefthook.yml`, `scripts/bump.sh`,
-   `.npmrc`) → von der CLI geschrieben. Datei-Policies in
+   `bunfig.toml`) → von der CLI geschrieben. Datei-Policies in
    `packages/cli/src/templates/index.ts`:
    - **managed** → `udx sync` überschreibt bei Drift (Verbesserungen fließen zurück)
    - **create-only** → nur angelegt, wenn fehlend (Projekt-Anpassungen bleiben)
@@ -34,7 +34,7 @@ extendet `@urbicon/biome-config` usw.).
 - `bin/udx.ts` — Arg-Parsing + Dispatch (zero runtime deps)
 - `commands/harness.ts` — geteilte `init`/`sync`-Logik
 - `commands/doctor.ts` — read-only Drift-Check
-- `lib/` — `detect` (Svelte-Erkennung), `apply` (Datei-Engine + `.npmrc`),
+- `lib/` — `detect` (Svelte-Erkennung), `apply` (Datei-Engine + `bunfig.toml`),
   `pkg` (package.json-Patch), `versions` (gepinnte Versionen), `fs`/`log`/`colors`
 - `templates/` — Render-Funktionen; komplexe Dateien (`cliff.toml`, `bump.sh`,
   `CLAUDE.md.tpl`) als Text-Assets unter `src/assets/` (Import via
@@ -72,5 +72,8 @@ Changelog (git-cliff) + annotated Tag. Push mit `git push --follow-tags`.
 
 ## Distribution
 
-`@urbicon/*` → Codebergs npm-Registry (`.npmrc`, Auth via `CODEBERG_TOKEN`).
+`@urbicon/*` → Codebergs npm-Registry (`bunfig.toml` `[install.scopes]`, Auth via
+`CODEBERG_TOKEN`). Privates Repo ⇒ Token auch zum Installieren nötig. Veröffentlichen
+pro Paket mit `bun publish` (Config-Pakete vor der CLI); `versions.ts` zieht die
+`@urbicon/*`-Pins automatisch aus der eigenen Version nach.
 Claude-Plugin → Marketplace `.claude-plugin/marketplace.json` (Repo-Root).

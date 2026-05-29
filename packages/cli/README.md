@@ -2,13 +2,13 @@
 
 CLI zum Einrichten und **Synchronisieren** des urbicon-Entwicklungs-Harness in
 Bun/Svelte-Projekten. Schreibt die nicht-erweiterbaren Dateien (cliff.toml,
-Lefthook-Hooks, bump.sh, .npmrc) und verdrahtet die erweiterbaren Config-Pakete
+Lefthook-Hooks, bump.sh, bunfig.toml) und verdrahtet die erweiterbaren Config-Pakete
 (`@urbicon/biome-config`, `@urbicon/commitlint-config`, `@urbicon/tsconfig`).
 
 ## Installation
 
 ```bash
-# .npmrc mit @urbicon-Registry vorausgesetzt
+# Voraussetzung: @urbicon-Scope global bekannt (~/.bunfig.toml) + CODEBERG_TOKEN gesetzt
 bun add -g @urbicon/udx
 ```
 
@@ -47,6 +47,10 @@ cd packages/cli && bun link        # global verfügbar machen
   Config-Pakete (Versionsbump).
 
 (* nur Svelte-Projekte.)
+
+`bunfig.toml` wird **additiv** behandelt: fehlt der `@urbicon`-Scope, wird er
+ergänzt (bzw. die Datei angelegt); ein bereits vorhandener `[install.scopes]`-Block
+wird nicht angetastet, sondern die zu ergänzende Zeile gemeldet.
 
 `package.json` wird idempotent gepatcht: fehlende Scripts/devDeps werden ergänzt;
 abweichende Werte bleiben stehen und werden gemeldet (`--force` überschreibt).

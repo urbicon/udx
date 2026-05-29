@@ -20,7 +20,7 @@ Aus dem Codeberg-Repo als Marketplace registrieren und Plugin installieren:
 Lokal (aus einem Klon) zum Entwickeln:
 
 ```text
-/plugin marketplace add /Users/felix/Workspace/udx
+/plugin marketplace add <pfad-zum-klon>
 /plugin install urbicon-udx@urbicon
 ```
 
