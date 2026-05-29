@@ -21,10 +21,11 @@
     "index.d.ts"
   ],
   "dependencies": {
-    "@commitlint/config-conventional": "^21.0.1"
+    "@commitlint/config-conventional": "^21.0.1",
+    "@commitlint/types": "^21.0.1"
   },
   "scripts": {
-    "check": "true",
+    "check": "tsc --noEmit",
     "test": "true"
   }
 }
