@@ -1,0 +1,24 @@
+{
+  "$schema": "https://docs.renovatebot.com/renovate-schema.json",
+  "extends": ["config:recommended"],
+  "rangeStrategy": "bump",
+  "semanticCommits": "enabled",
+  "semanticCommitScope": "deps",
+  "packageRules": [
+    {
+      "description": "Bun-Catalog (Root-package.json) ist die Single Source of Truth — Patch/Minor gebündelt als ein PR statt verstreut.",
+      "matchFileNames": ["package.json"],
+      "matchUpdateTypes": ["patch", "minor"],
+      "groupName": "stack (catalog)"
+    },
+    {
+      "description": "udx-eigene Config-Pakete sind unified mit der CLI-Version (scripts/bump.sh) — nicht von Renovate anheben.",
+      "matchPackageNames": [
+        "@urbicon/biome-config",
+        "@urbicon/commitlint-config",
+        "@urbicon/tsconfig"
+      ],
+      "enabled": false
+    }
+  ]
+}

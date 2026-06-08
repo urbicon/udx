@@ -40,6 +40,7 @@
     "bump:minor": "bash scripts/bump.sh minor",
     "bump:major": "bash scripts/bump.sh major",
     "release:publish": "bash scripts/publish.sh",
+    "stack:update": "bun run scripts/stack-update.ts",
     "changelog": "git-cliff --output CHANGELOG.md",
     "prepare": "lefthook install"
   },

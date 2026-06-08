@@ -77,8 +77,15 @@ CLI lokal ausführen ohne Build: `bun run packages/cli/src/bin/udx.ts <befehl>`.
   Lefthook, Conventional Commits + git-cliff. Beim Ändern von Templates **beide
   Seiten** denken: das Asset/Render **und** ob `init`/`sync`/`doctor` korrekt damit
   umgehen.
-- **Versionen** gepinnt in `packages/cli/src/lib/versions.ts` — hier zentral
-  aktualisieren, nicht verstreut.
+- **Tool-Versionen** sind im **Bun-Catalog** der Root-`package.json`
+  (`workspaces.catalog` + `catalogs.svelte`) zentral gepinnt — die Single Source of
+  Truth. `versions.ts` *liest* sie nur und leitet die Consumer-Pins ab; `@urbicon/*`
+  sind unified mit der CLI-Version (nicht im Catalog). **Anheben** via `bump.sh`
+  passiert nicht — der Stack wird separat aktualisiert: **Renovate** (Default,
+  `renovate.json`, `rangeStrategy: bump`) oder manuell
+  `bun run stack:update [--minor|--major]` (Default-Gate = nur Patch, schreibt den
+  Catalog operator-erhaltend). `bun outdated -r` ist die Lesesicht — zeigt named-Catalogs
+  (`catalogs.svelte`) **nicht** an, daher das Script.
 - **Dogfooding**: Root-Configs nutzen die eigenen Pakete. Nach Änderungen an einem
   Config-Paket prüfen, dass das Root-Setup weiter lädt.
 
