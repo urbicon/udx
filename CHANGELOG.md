@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 This changelog is automatically generated from [Conventional Commits](https://www.conventionalcommits.org).
 
 
+## [0.1.3] - 2026-06-08
+
+### Miscellaneous
+- Dependency updates
+
 ## [0.1.2] - 2026-06-08
 
 ### Bug Fixes
