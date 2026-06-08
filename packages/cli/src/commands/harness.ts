@@ -58,14 +58,25 @@ export function installPlan(
 function installDeps(cwd: string): boolean {
   log.plain();
   log.step('bun install');
-  const { success } = Bun.spawnSync(['bun', 'install'], {
-    cwd,
-    stdout: 'inherit',
-    stderr: 'inherit',
-    stdin: 'inherit'
-  });
+  let success = false;
+  try {
+    ({ success } = Bun.spawnSync(['bun', 'install'], {
+      cwd,
+      stdout: 'inherit',
+      stderr: 'inherit',
+      stdin: 'inherit'
+    }));
+  } catch (err) {
+    // Bun.spawnSync wirft (statt success:false), wenn `bun` nicht im $PATH liegt.
+    log.err(
+      `bun install ließ sich nicht starten: ${err instanceof Error ? err.message : String(err)}`
+    );
+    return false;
+  }
+  // success:false auch, wenn nur ein Lifecycle-Script (z. B. prepare) scheiterte, die Deps aber
+  // installiert wurden — daher auf die durchgereichte Ausgabe verweisen statt pauschal „fehlgeschlagen".
   if (success) log.ok('Abhängigkeiten installiert.');
-  else log.err('bun install fehlgeschlagen — bitte manuell ausführen.');
+  else log.err('bun install nicht sauber durchgelaufen (Details oben) — bitte prüfen.');
   return success;
 }
 
