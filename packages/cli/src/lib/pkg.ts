@@ -111,11 +111,14 @@ export function computePkgPlan(ctx: ProjectContext, filter: PkgFilter = {}): Pkg
     if (only?.devDeps && !only.devDeps.has(name)) continue;
     if (skip?.devDeps?.has(name)) continue;
     const current = devDeps[name];
-    // Bewusst gehalten (`udx pin`) → unberührt lassen, aber zur Sicht melden (nur wenn vorhanden).
+    // Bewusst gehalten (`udx pin`) → unberührt lassen (kein Anheben, kein Ergänzen), aber stets
+    // melden — auch wenn nicht installiert —, damit ein aktiver Pin nie still „verschwindet".
     if (pinned?.has(name)) {
-      if (current !== undefined) {
-        plan.devDepsPinned.push({ name, to: to as string, from: current });
-      }
+      plan.devDepsPinned.push(
+        current !== undefined
+          ? { name, to: to as string, from: current }
+          : { name, to: to as string }
+      );
       continue;
     }
     if (current === undefined) plan.devDepsToAdd.push({ name, to: to as string });

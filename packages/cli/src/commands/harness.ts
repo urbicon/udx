@@ -104,7 +104,8 @@ function patchPkg(
     log.info(`${c.cyan('↑ devDep')} ${ch.name} ${ch.from} → ${ch.to}`);
   }
   for (const ch of plan.devDepsPinned) {
-    log.skip(`devDep ${ch.name} gehalten bei ${ch.from} (lösen: udx unpin ${ch.name})`);
+    const at = ch.from ?? '(nicht installiert)';
+    log.skip(`devDep ${ch.name} gehalten bei ${at} (lösen: udx unpin ${ch.name})`);
   }
   for (const ch of plan.scriptsDrift) {
     if (force) log.info(`${c.yellow('~ script')} ${ch.name}`);
@@ -112,6 +113,8 @@ function patchPkg(
   }
 
   if (dryRun) return;
+  // Nichts tatsächlich Schreibbares (z. B. nur gehaltene Deps gemeldet) → kein Datei-Roundtrip.
+  if (auto === 0 && !(force && scriptDrift > 0)) return;
   const pkg = readJson<PackageJson>(abs(ctx.cwd, 'package.json'));
   if (mutatePkg(pkg, plan, force)) writeJson(abs(ctx.cwd, 'package.json'), pkg);
 }

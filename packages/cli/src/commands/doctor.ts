@@ -137,7 +137,8 @@ export function runDoctor(flags: DoctorFlags): number {
   for (const ch of plan.scriptsDrift) warn(`script ${ch.name} weicht ab`);
   for (const ch of plan.devDepsDrift)
     warn(`devDep ${ch.name} ${ch.from ?? '?'} → ${ch.to} (sync zieht hoch)`);
-  for (const ch of plan.devDepsPinned) log.skip(`devDep ${ch.name} gehalten bei ${ch.from}`);
+  for (const ch of plan.devDepsPinned)
+    log.skip(`devDep ${ch.name} gehalten bei ${ch.from ?? '(nicht installiert)'}`);
 
   log.plain();
   if (fails > 0) {

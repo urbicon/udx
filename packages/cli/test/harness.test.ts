@@ -675,6 +675,15 @@ describe('pin/unpin & sicheres Anheben', () => {
     expect(plan.devDepsPinned.some((d) => d.name === '@types/node')).toBe(true);
   });
 
+  test('gepinnte aber fehlende devDep wird gemeldet, nicht ergänzt (hands-off, nie still)', () => {
+    const ctx = detectContext(project({ name: 'x' })); // @types/node nicht installiert
+    const plan = computePkgPlan(ctx, { pinned: new Set(['@types/node']) });
+    expect(plan.devDepsToAdd.some((d) => d.name === '@types/node')).toBe(false);
+    expect(plan.devDepsPinned.some((d) => d.name === '@types/node' && d.from === undefined)).toBe(
+      true
+    );
+  });
+
   test('mutatePkg lässt gepinnte devDep selbst mit force unberührt', () => {
     const ctx = detectContext(
       project({ name: 'x', devDependencies: { '@types/node': '^25.0.0' } })
