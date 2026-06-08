@@ -28,7 +28,7 @@ import {
   mutatePkg,
   satisfiesPin
 } from '../src/lib/pkg.ts';
-import { VERSIONS } from '../src/lib/versions.ts';
+import { SVELTE_DEPS, TOOL_DEPS, VERSIONS } from '../src/lib/versions.ts';
 import { isTypeScriptPackage, resolveWorkspaces } from '../src/lib/workspace.ts';
 import { FILE_TEMPLATES } from '../src/templates/index.ts';
 
@@ -828,18 +828,22 @@ describe('Versionierung', () => {
     expect(VERSIONS['@urbicon/tsconfig']).toBe(`^${own}`);
   });
 
-  test('Third-Party-Pins entsprechen den eigenen Workspace-Deps (kein Pin-Lag)', () => {
-    // versions.ts ist handgepflegt und entkoppelt von `bun outdated`: bumpt man die eigenen
-    // Workspace-Deps, müssen die Consumer-Pins mitgezogen werden. Dieser Test macht ein
-    // Zurückbleiben sichtbar (statt es still an Consumer weiterzureichen, was Downgrades provoziert).
-    const rootDev: Record<string, string> =
-      JSON.parse(readFileSync(join(import.meta.dir, '..', '..', '..', 'package.json'), 'utf8'))
-        .devDependencies ?? {};
-    for (const [name, pin] of Object.entries(VERSIONS)) {
-      const own = rootDev[name];
-      if (!own || own.startsWith('workspace:')) continue; // nur Deps, die udx selbst als Range nutzt
-      expect(`${name}: ${pin}`).toBe(`${name}: ${own}`);
-    }
+  test('VERSIONS spiegeln den Root-Catalog (single source: Tool + Svelte)', () => {
+    // Der Catalog ist die EINE Quelle; VERSIONS leitet sich daraus ab. Bricht dieser Test, ist
+    // versions.ts vom Catalog entkoppelt (statt ihn nur zu lesen) — ein Bump würde nicht propagieren.
+    const ws = JSON.parse(
+      readFileSync(join(import.meta.dir, '..', '..', '..', 'package.json'), 'utf8')
+    ).workspaces;
+    for (const n of TOOL_DEPS) expect(VERSIONS[n]).toBe(ws.catalog[n]);
+    for (const n of SVELTE_DEPS) expect(VERSIONS[n]).toBe(ws.catalogs.svelte[n]);
+  });
+
+  test('jeder vorgeschriebene Dep-Name hat einen Catalog-Eintrag (Completeness)', () => {
+    const ws = JSON.parse(
+      readFileSync(join(import.meta.dir, '..', '..', '..', 'package.json'), 'utf8')
+    ).workspaces;
+    for (const n of TOOL_DEPS) expect(ws.catalog[n]).toBeDefined();
+    for (const n of SVELTE_DEPS) expect(ws.catalogs.svelte[n]).toBeDefined();
   });
 
   test('alle Workspace-Pakete tragen dieselbe Version', () => {

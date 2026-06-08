@@ -1,5 +1,5 @@
 import type { PackageJson, ProjectContext } from './detect.ts';
-import { type DepName, VERSIONS } from './versions.ts';
+import { type DepName, SVELTE_DEPS, TOOL_DEPS, URBICON_DEPS, VERSIONS } from './versions.ts';
 
 export interface PkgChange {
   name: string;
@@ -34,25 +34,8 @@ export function canonicalScripts(ctx: ProjectContext): Record<string, string> {
 }
 
 export function canonicalDevDeps(ctx: ProjectContext): Partial<Record<DepName, string>> {
-  const base: DepName[] = [
-    '@biomejs/biome',
-    '@commitlint/cli',
-    'lefthook',
-    'git-cliff',
-    'typescript',
-    '@types/node',
-    'bun-types',
-    '@urbicon/biome-config',
-    '@urbicon/commitlint-config',
-    '@urbicon/tsconfig'
-  ];
-  const svelteOnly: DepName[] = [
-    'prettier',
-    'prettier-plugin-svelte',
-    'prettier-plugin-tailwindcss',
-    'svelte-check'
-  ];
-  const names = ctx.svelte ? [...base, ...svelteOnly] : base;
+  const base: DepName[] = [...TOOL_DEPS, ...URBICON_DEPS];
+  const names = ctx.svelte ? [...base, ...SVELTE_DEPS] : base;
   const out: Partial<Record<DepName, string>> = {};
   for (const n of names) out[n] = VERSIONS[n];
   return out;
