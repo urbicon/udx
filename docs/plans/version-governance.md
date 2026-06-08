@@ -46,10 +46,11 @@ sieht den Zustand statt ihn zu erfragen, und löst riskante Aktionen nur bewusst
 - [x] DoD: `VERSIONS` byte-identisch (Laufzeit verifiziert), Suite grün, `udx sync --dry-run` identischer Plan, dist trägt korrektes `^25.9.2`.
 - [x] committen + Review → Befund (Dogfooding untested) behoben. **npm-Sicherheits-Guard verworfen**: npm spielt keine Rolle, `bun publish` löst `catalog:` auf → `catalog:` bleibt auch in publizierten Runtime-Deps (konsistent). Siehe Memory `bun-only-no-npm`.
 
-### WP3 — Phase 1: `svelte-fixture`
-- [ ] `packages/svelte-fixture/package.json` (private, `catalog:svelte`) + Mini-`.svelte` + `check`-Script.
-- [ ] Sicherstellen: udx-Dogfooding zwingt der Fixture keine ungewollten Bausteine auf (`isTypeScriptPackage`/Svelte-Erkennung prüfen).
-- [ ] committen + Review.
+### WP3 — Phase 1: `svelte-fixture`  ✅ committet + reviewed
+- [x] `packages/svelte-fixture/package.json` (private, `catalog:svelte`) + Mini-`.svelte` + `check`-Script (prettier mit exakt vorgeschriebener `.prettierrc`/`.prettierignore` + `svelte-check`, läuft im Gate).
+- [x] Sicherstellen: udx-Dogfooding zwingt der Fixture keine ungewollten Bausteine auf (Reviewer bestätigt: tsconfig create-only → skip, publish.sh listet sie nicht).
+- [x] udx-Root-`biome.json` ignoriert `.svelte` (nur lokal; publizierte `biome-base` unberührt).
+- [x] committen + Review → Befund (prettier-Scope) behoben (`.prettierignore`). _Caveat:_ `bun outdated` zeigt named-Catalogs (`catalogs.svelte`) evtl. nicht — in WP7 verifizieren.
 
 ### WP4 — D4: `udx status` (Sichtbarkeit) + Klassifikations-Engine
 - [ ] Gemeinsame Klassifikation (in sync / behind↑ / ahead⟳ / customized✎ / missing+ / pinned⊙ / declined⊘) aus `computePkgPlan` + `applyFiles`-Dry ableiten.
@@ -58,13 +59,13 @@ sieht den Zustand statt ihn zu erfragen, und löst riskante Aktionen nur bewusst
 - [ ] Tests für Klassifikation + Rendering (color:false).
 - [ ] committen + Review.
 
-### WP5 — D5: sichere Sync-Semantik + `pin/unpin`
-- [ ] `harness`/`mutatePkg`: `devDepsToAdd` + `devDepsDrift`(=behind) im **Nicht-Force**-Pfad anwenden; `scriptsDrift` bleibt Force-only.
-- [ ] Manifest: `pinned: Record<dep, range>`; `computePkgPlan` respektiert Pins (kein Drift/Add).
-- [ ] `commands/pin.ts` (+ `bin`): `udx pin <dep> [range]` / `udx unpin <dep>`.
-- [ ] Footer/Status zeigen gehaltene Deps.
-- [ ] Tests: Auto-Pull-up ohne Force, Pin hält, unpin löst.
-- [ ] committen + Review.
+### WP5 — D5: sichere Sync-Semantik + `pin/unpin`  ✅ committet + reviewed
+- [x] `mutatePkg`: `devDepsDrift`(=behind) im **Nicht-Force**-Pfad anwenden (nie Downgrade); `scriptsDrift` bleibt Force-only.
+- [x] Manifest: `pinned: Record<dep, range>`; `computePkgPlan` respektiert Pins (kein Drift/Add), meldet sie aber (auch fehlende → nie still).
+- [x] `commands/pin.ts` (+ `bin`): `udx pin <dep> [range]` / `udx unpin <dep>`.
+- [x] `harness`/`doctor` zeigen gehaltene Deps; Drift = „sync zieht hoch" (kein Force-Nag).
+- [x] Tests: Auto-Pull-up ohne Force, Pin hält, unpin löst, pinned-absent gemeldet.
+- [x] committen + Review → Befunde (gepinnt-fehlend still; unnötiger Roundtrip) behoben.
 
 ### WP6 — D6/D7: `add`/`remove` + Naming-Aliase
 - [ ] `add`/`remove` als Dev-facing Verben (über `adopt`/`skip` + scoped sync); `status` als Primärname, `doctor` Alias.
