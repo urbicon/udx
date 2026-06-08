@@ -78,13 +78,17 @@ export interface CapabilityState {
 }
 
 /**
- * Bestimmt je Capability den Zustand. Rein (mutiert nichts): eine bereits im Manifest
- * vermerkte Abwahl gewinnt; sonst entscheidet `supersededBy`. Auto-Abwahlen sind `fresh`
- * — der Caller persistiert sie (init/sync) oder zeigt sie nur an (doctor). Eine persistierte
- * Auto-Abwahl, deren Tool verschwunden ist, wird `stale` markiert (doctor weist darauf hin).
+ * Bestimmt je Capability den Zustand. Rein (mutiert nichts). Priorität:
+ * `adopted` (explizit aktiv, überstimmt jede Auto-Abwahl) → `declined` (im Manifest vermerkt)
+ * → `supersededBy` (frische Auto-Abwahl, `fresh`). Der Caller persistiert frische Abwahlen
+ * (init/sync) oder zeigt sie nur an (doctor). Eine persistierte Auto-Abwahl, deren Tool
+ * verschwunden ist, wird `stale` markiert (doctor weist darauf hin).
  */
 export function resolveCapabilities(ctx: ProjectContext, manifest: Manifest): CapabilityState[] {
   return CAPABILITIES.map((cap) => {
+    if (manifest.adopted.includes(cap.id)) {
+      return { cap, declined: false, reason: '', fresh: false, stale: false };
+    }
     const persisted = manifest.declined[cap.id];
     if (persisted !== undefined) {
       // 'manual' ist eine bewusste Wahl und nie veraltet; ein Tool-Grund schon, wenn es fehlt.
@@ -116,4 +120,35 @@ export function declinedSets(states: CapabilityState[]): DeclinedSets {
     for (const d of s.cap.devDeps) devDeps.add(d);
   }
   return { files, scripts, devDeps };
+}
+
+export interface Selection {
+  /** Ausgewählte FILE_TEMPLATE-Ids. */
+  files: Set<string>;
+  scripts: Set<string>;
+  devDeps: Set<string>;
+  /** Bezeichner, die weder Capability noch Datei sind. */
+  unknown: string[];
+}
+
+/**
+ * Löst `--only`-Bezeichner zu konkreten Bausteinen auf. Ein Bezeichner ist entweder eine
+ * Capability-Id (expandiert zu deren Datei/Scripts/devDeps) oder eine FILE_TEMPLATE-Id.
+ * `validFileIds` kommt vom Caller, damit die lib von den Templates entkoppelt bleibt.
+ */
+export function resolveSelection(ids: string[], validFileIds: ReadonlySet<string>): Selection {
+  const sel: Selection = { files: new Set(), scripts: new Set(), devDeps: new Set(), unknown: [] };
+  for (const id of ids) {
+    const cap = findCapability(id);
+    if (cap) {
+      for (const f of cap.files) sel.files.add(f);
+      for (const s of cap.scripts) sel.scripts.add(s);
+      for (const d of cap.devDeps) sel.devDeps.add(d);
+    } else if (validFileIds.has(id)) {
+      sel.files.add(id);
+    } else {
+      sel.unknown.push(id);
+    }
+  }
+  return sel;
 }

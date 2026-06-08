@@ -19,21 +19,24 @@ ${c.bold('Befehle')}
   skip <id>      Baustein dauerhaft abwählen (z. B. wenn ein anderer Stack genutzt wird)
 
 ${c.bold('Optionen')}
-  -n, --dry-run    nichts schreiben, nur anzeigen
-  -f, --force      auch lokal geänderte managed-Dateien & package.json-Drift überschreiben
-      --diff       bei Drift den Unterschied lokal → Template anzeigen
-      --svelte     Svelte-Setup erzwingen (statt Auto-Erkennung)
-      --no-svelte  reines TS-Setup erzwingen
-      --cwd <pfad> Zielverzeichnis (Default: aktuelles)
-  -h, --help       diese Hilfe
-  -V, --version    Version
+  -n, --dry-run     nichts schreiben, nur anzeigen
+  -f, --force       auch lokal geänderte managed-Dateien & package.json-Drift überschreiben
+  -i, --interactive bei Konflikten pro Datei entscheiden (update/skip/diff)
+      --only <ids>  nur diese Bausteine (Capability- oder Datei-Ids, kommasepariert)
+      --diff        bei Drift den Unterschied lokal → Template anzeigen
+      --svelte      Svelte-Setup erzwingen (statt Auto-Erkennung)
+      --no-svelte   reines TS-Setup erzwingen
+      --cwd <pfad>  Zielverzeichnis (Default: aktuelles)
+  -h, --help        diese Hilfe
+  -V, --version     Version
 
 ${c.bold('Beispiele')}
-  udx init                 ${c.gray('# neues/bestehendes Projekt einrichten')}
+  udx init                  ${c.gray('# neues/bestehendes Projekt einrichten')}
   udx sync --dry-run --diff ${c.gray('# Vorschau samt Diff, was ein Update ändern würde')}
-  udx sync                 ${c.gray('# Harness-Updates übernehmen')}
-  udx doctor               ${c.gray('# Drift prüfen')}
-  udx skip git-hooks       ${c.gray('# lefthook nicht verwalten (eigener Hook-Stack)')}
+  udx sync --interactive    ${c.gray('# Konflikte einzeln entscheiden')}
+  udx adopt git-hooks && udx sync --only git-hooks ${c.gray('# nur diesen Baustein migrieren')}
+  udx doctor                ${c.gray('# Drift prüfen')}
+  udx skip git-hooks        ${c.gray('# lefthook nicht verwalten (eigener Hook-Stack)')}
 `;
 
 interface CliFlags extends HarnessFlags {
@@ -48,6 +51,8 @@ function parseFlags(argv: string[]): CliFlags {
     force: false,
     svelte: undefined,
     diff: false,
+    only: [],
+    interactive: false,
     positional: []
   };
   for (let i = 0; i < argv.length; i++) {
@@ -64,6 +69,20 @@ function parseFlags(argv: string[]): CliFlags {
       case '--diff':
         flags.diff = true;
         break;
+      case '-i':
+      case '--interactive':
+        flags.interactive = true;
+        break;
+      case '--only': {
+        const v = argv[i + 1];
+        if (!v || v.startsWith('-')) {
+          log.err('--only braucht eine Id-Liste (z. B. `--only git-hooks`)');
+          process.exit(2);
+        }
+        i++;
+        for (const id of v.split(',')) if (id.trim()) flags.only.push(id.trim());
+        break;
+      }
       case '--svelte':
         flags.svelte = true;
         break;

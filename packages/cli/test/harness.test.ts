@@ -4,7 +4,12 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runAdopt, runSkip } from '../src/commands/capability.ts';
 import { type ApplyOptions, applyFiles, ensureBunfig, URBICON_REGISTRY } from '../src/lib/apply.ts';
-import { CAPABILITIES, declinedSets, resolveCapabilities } from '../src/lib/capabilities.ts';
+import {
+  CAPABILITIES,
+  declinedSets,
+  resolveCapabilities,
+  resolveSelection
+} from '../src/lib/capabilities.ts';
 import { detectContext, type ProjectContext } from '../src/lib/detect.ts';
 import { formatDiff } from '../src/lib/diff.ts';
 import {
@@ -188,7 +193,7 @@ describe('manifest', () => {
 
   test('writeManifest schreibt .udx.json und ist idempotent', () => {
     const dir = project({ name: 'x' });
-    const m: Manifest = { harness: '1.0.0', declined: {}, files: { 'cliff.toml': 'abc' } };
+    const m: Manifest = { ...emptyManifest(), harness: '1.0.0', files: { 'cliff.toml': 'abc' } };
     expect(writeManifest(dir, m, false)).toBe(true);
     expect(existsSync(join(dir, MANIFEST_FILE))).toBe(true);
     expect(writeManifest(dir, m, false)).toBe(false); // unverändert ⇒ kein Schreiben
@@ -242,7 +247,7 @@ describe('capabilities', () => {
       project({ name: 'x', devDependencies: { svelte: '^5', eslint: '^9' } })
     );
     const sets = declinedSets(resolveCapabilities(ctx, emptyManifest()));
-    const plan = computePkgPlan(ctx, { scripts: sets.scripts, devDeps: sets.devDeps });
+    const plan = computePkgPlan(ctx, { skip: { scripts: sets.scripts, devDeps: sets.devDeps } });
     expect(plan.devDepsToAdd.some((d) => d.name === 'svelte-check')).toBe(false);
     expect(plan.devDepsToAdd.some((d) => d.name === '@biomejs/biome')).toBe(false);
     // `prettier` bleibt (vom git-hooks-Prettier-Hook geteilt):
@@ -328,14 +333,76 @@ describe('capabilities', () => {
     expect(r?.note).toContain('husky');
   });
 
-  test('computePkgPlan überspringt abgewählte Scripts/devDeps', () => {
+  test('computePkgPlan überspringt abgewählte Scripts/devDeps (skip)', () => {
     const ctx = detectContext(project({ name: 'x' }));
     const plan = computePkgPlan(ctx, {
-      scripts: new Set(['prepare']),
-      devDeps: new Set(['lefthook'])
+      skip: { scripts: new Set(['prepare']), devDeps: new Set(['lefthook']) }
     });
     expect(plan.scriptsToAdd.some((s) => s.name === 'prepare')).toBe(false);
     expect(plan.devDepsToAdd.some((d) => d.name === 'lefthook')).toBe(false);
+  });
+
+  test('computePkgPlan only-Whitelist beschränkt den Plan', () => {
+    const ctx = detectContext(project({ name: 'x' }));
+    const plan = computePkgPlan(ctx, {
+      only: { scripts: new Set(['lint']), devDeps: new Set(['@biomejs/biome']) }
+    });
+    expect(plan.scriptsToAdd.map((s) => s.name)).toEqual(['lint']);
+    expect(plan.devDepsToAdd.map((d) => d.name)).toEqual(['@biomejs/biome']);
+  });
+});
+
+describe('resolveSelection (--only)', () => {
+  const fileIds = new Set(FILE_TEMPLATES.map((t) => t.id));
+
+  test('Capability-Id expandiert zu Datei/Scripts/devDeps', () => {
+    const sel = resolveSelection(['git-hooks'], fileIds);
+    expect(sel.files.has('lefthook')).toBe(true);
+    expect(sel.scripts.has('prepare')).toBe(true);
+    expect(sel.devDeps.has('lefthook')).toBe(true);
+    expect(sel.unknown).toHaveLength(0);
+  });
+
+  test('Datei-Id wird direkt übernommen', () => {
+    const sel = resolveSelection(['cliff'], fileIds);
+    expect(sel.files.has('cliff')).toBe(true);
+    expect(sel.scripts.size).toBe(0);
+  });
+
+  test('unbekannte Bezeichner landen in unknown', () => {
+    const sel = resolveSelection(['cliff', 'unsinn'], fileIds);
+    expect(sel.files.has('cliff')).toBe(true);
+    expect(sel.unknown).toEqual(['unsinn']);
+  });
+});
+
+describe('applyFiles --only', () => {
+  test('beschränkt das Schreiben auf die gewählten Datei-Ids', () => {
+    const dir = project({ name: 'x' });
+    const res = applyFiles(
+      dir,
+      detectContext(dir),
+      INIT,
+      emptyManifest(),
+      new Map(),
+      new Set(['cliff'])
+    );
+    expect(existsSync(join(dir, 'cliff.toml'))).toBe(true);
+    expect(existsSync(join(dir, 'biome.json'))).toBe(false); // nicht im Filter
+    expect(res.every((r) => r.dest === 'cliff.toml')).toBe(true);
+  });
+
+  test('only + force schreibt gezielt nur eine lokal geänderte Datei (interaktiver Pfad)', () => {
+    const dir = project({ name: 'x' });
+    const ctx = detectContext(dir);
+    const m = emptyManifest();
+    applyFiles(dir, ctx, INIT, m); // legt cliff.toml + bump.sh an
+    writeFileSync(join(dir, 'cliff.toml'), '# lokal');
+    writeFileSync(join(dir, 'scripts/bump.sh'), '# lokal bump');
+    // gezieltes Force-Write nur für cliff (wie runInteractive bei "update"):
+    applyFiles(dir, ctx, { ...SYNC, force: true }, m, new Map(), new Set(['cliff']));
+    expect(readFileSync(join(dir, 'cliff.toml'), 'utf8')).not.toBe('# lokal');
+    expect(readFileSync(join(dir, 'scripts/bump.sh'), 'utf8')).toBe('# lokal bump'); // unberührt
   });
 });
 
@@ -346,6 +413,27 @@ describe('skip & adopt', () => {
     expect(readManifest(dir).declined['git-hooks']).toBe('manual');
     expect(runAdopt({ cwd: dir, dryRun: false, capability: 'git-hooks' })).toBe(0);
     expect(readManifest(dir).declined['git-hooks']).toBeUndefined();
+  });
+
+  test('adopt überstimmt Auto-Abwahl (lefthook trotz husky)', () => {
+    // husky vorhanden ⇒ git-hooks würde auto-abgewählt; adopt macht es explizit aktiv.
+    const dir = project({ name: 'x', devDependencies: { husky: '^9' } });
+    expect(runAdopt({ cwd: dir, dryRun: false, capability: 'git-hooks' })).toBe(0);
+    const m = readManifest(dir);
+    expect(m.adopted).toContain('git-hooks');
+    expect(m.declined['git-hooks']).toBeUndefined();
+    // resolveCapabilities respektiert adopt trotz weiterhin vorhandenem husky:
+    const st = resolveCapabilities(detectContext(dir), m).find((s) => s.cap.id === 'git-hooks');
+    expect(st?.declined).toBe(false);
+  });
+
+  test('skip hebt eine vorherige Aufnahme (adopt) wieder auf', () => {
+    const dir = project({ name: 'x', devDependencies: { husky: '^9' } });
+    runAdopt({ cwd: dir, dryRun: false, capability: 'git-hooks' });
+    runSkip({ cwd: dir, dryRun: false, capability: 'git-hooks' });
+    const m = readManifest(dir);
+    expect(m.adopted).not.toContain('git-hooks');
+    expect(m.declined['git-hooks']).toBe('manual');
   });
 
   test('unbekannter Baustein → exit 2', () => {

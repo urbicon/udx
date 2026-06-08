@@ -35,10 +35,13 @@ export function runSkip(flags: CapabilityFlags): number {
   if (!cap) return 2;
 
   const manifest = readManifest(flags.cwd);
-  if (manifest.declined[cap.id] !== undefined) {
-    log.info(`${cap.label} ist bereits abgewählt (${manifest.declined[cap.id]}).`);
+  const alreadyManual =
+    manifest.declined[cap.id] === 'manual' && !manifest.adopted.includes(cap.id);
+  if (alreadyManual) {
+    log.info(`${cap.label} ist bereits abgewählt.`);
     return 0;
   }
+  manifest.adopted = manifest.adopted.filter((id) => id !== cap.id);
   manifest.declined[cap.id] = 'manual';
   writeManifest(flags.cwd, manifest, flags.dryRun);
   log.ok(`${cap.label} abgewählt${flags.dryRun ? ' (Dry-Run)' : ''}.`);
@@ -46,19 +49,25 @@ export function runSkip(flags: CapabilityFlags): number {
   return 0;
 }
 
-/** Nimmt einen abgewählten Baustein wieder auf; `udx sync` richtet ihn anschließend ein. */
+/**
+ * Nimmt einen Baustein explizit auf (überstimmt die Auto-Abwahl, z. B. lefthook trotz husky)
+ * und entfernt eine vorhandene Abwahl. `udx sync` richtet ihn anschließend ein.
+ */
 export function runAdopt(flags: CapabilityFlags): number {
   const cap = resolve(flags, 'adopt');
   if (!cap) return 2;
 
   const manifest = readManifest(flags.cwd);
-  if (manifest.declined[cap.id] === undefined) {
-    log.info(`${cap.label} ist nicht abgewählt — nichts zu tun.`);
+  const wasDeclined = manifest.declined[cap.id] !== undefined;
+  const wasAdopted = manifest.adopted.includes(cap.id);
+  if (wasAdopted && !wasDeclined) {
+    log.info(`${cap.label} ist bereits aktiv.`);
     return 0;
   }
   delete manifest.declined[cap.id];
+  if (!wasAdopted) manifest.adopted.push(cap.id);
   writeManifest(flags.cwd, manifest, flags.dryRun);
   log.ok(`${cap.label} aufgenommen${flags.dryRun ? ' (Dry-Run)' : ''}.`);
-  log.info(c.gray('Einrichten mit `udx sync`.'));
+  log.info(c.gray(`Einrichten mit \`udx sync --only ${cap.id}\`.`));
   return 0;
 }

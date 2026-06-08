@@ -4,15 +4,19 @@ import {
   type CapabilityState,
   type DeclinedSets,
   declinedSets,
-  resolveCapabilities
+  resolveCapabilities,
+  resolveSelection,
+  type Selection
 } from '../lib/capabilities.ts';
 import { c } from '../lib/colors.ts';
 import { detectContext, type PackageJson, type ProjectContext } from '../lib/detect.ts';
-import { abs, exists, readJson, writeJson } from '../lib/fs.ts';
+import { formatDiff } from '../lib/diff.ts';
+import { abs, exists, readJson, readText, writeJson } from '../lib/fs.ts';
 import { log, reportAction } from '../lib/log.ts';
 import { MANIFEST_FILE, type Manifest, readManifest, writeManifest } from '../lib/manifest.ts';
-import { computePkgPlan, mutatePkg } from '../lib/pkg.ts';
+import { computePkgPlan, mutatePkg, type PkgSet } from '../lib/pkg.ts';
 import { CLI_VERSION } from '../lib/versions.ts';
+import { FILE_TEMPLATES } from '../templates/index.ts';
 
 export interface HarnessFlags {
   cwd: string;
@@ -21,25 +25,31 @@ export interface HarnessFlags {
   svelte: boolean | undefined;
   /** Bei Drift den Unterschied lokal → Template anzeigen. */
   diff: boolean;
+  /** Nur diese Bausteine (Capability- oder Datei-Ids) verarbeiten; leer = alle. */
+  only: string[];
+  /** Bei Konflikten pro Datei interaktiv entscheiden (braucht ein TTY). */
+  interactive: boolean;
 }
 
-/**
- * Meldet abgewählte Bausteine und persistiert frische Auto-Abwahlen ins Manifest
- * (außer Dry-Run). Unaufdringlich: eine Zeile je Baustein mit Grund und Adopt-Hinweis.
- */
-function reportCapabilities(states: CapabilityState[], manifest: Manifest, dryRun: boolean): void {
+/** Persistiert frische Auto-Abwahlen ins Manifest (globaler Fakt, auch unter `--only`). */
+function persistDeclines(states: CapabilityState[], manifest: Manifest): void {
+  for (const s of states) {
+    if (s.declined && s.fresh) manifest.declined[s.cap.id] = s.reason;
+  }
+}
+
+/** Zeigt abgewählte Bausteine unaufdringlich an (eine Zeile je Baustein + Hinweis). */
+function reportCapabilities(states: CapabilityState[]): void {
   const declined = states.filter((s) => s.declined);
   if (declined.length === 0) return;
 
   log.plain();
   log.step('Bausteine');
   for (const s of declined) {
-    if (s.fresh) {
-      if (!dryRun) manifest.declined[s.cap.id] = s.reason;
-      log.skip(`${s.cap.label}: ${s.reason} erkannt — übersprungen, gemerkt`);
-    } else {
-      log.skip(`${s.cap.label}: abgewählt (${s.reason})`);
-    }
+    const detail = s.fresh
+      ? `${s.reason} erkannt — übersprungen, gemerkt`
+      : `abgewählt (${s.reason})`;
+    log.skip(`${s.cap.label}: ${detail}`);
   }
   log.info(
     c.gray('Aktivieren mit `udx adopt <id>` (z. B. git-hooks), abwählen mit `udx skip <id>`.')
@@ -64,9 +74,13 @@ function patchPkg(
   ctx: ProjectContext,
   dryRun: boolean,
   force: boolean,
-  declined: DeclinedSets
+  declined: DeclinedSets,
+  only: PkgSet | undefined
 ): void {
-  const plan = computePkgPlan(ctx, { scripts: declined.scripts, devDeps: declined.devDeps });
+  const plan = computePkgPlan(ctx, {
+    skip: { scripts: declined.scripts, devDeps: declined.devDeps },
+    ...(only ? { only } : {})
+  });
   const adds = plan.scriptsToAdd.length + plan.devDepsToAdd.length;
   const drift = plan.scriptsDrift.length + plan.devDepsDrift.length;
 
@@ -135,6 +149,62 @@ function printFooter(
   }
 }
 
+/**
+ * Geht Konflikt-Dateien interaktiv durch: [u]pdate übernimmt das Template (gezieltes
+ * Force-Write nur dieser Datei), [s]kip lässt die lokale Fassung, [d]iff zeigt den
+ * Unterschied und fragt erneut. Leere Eingabe/EOF ⇒ konservativ skippen. Braucht ein TTY.
+ */
+function runInteractive(
+  cwd: string,
+  ctx: ProjectContext,
+  mode: 'init' | 'sync',
+  manifest: Manifest,
+  conflicts: FileResult[]
+): void {
+  if (conflicts.length === 0) return;
+  if (!process.stdin.isTTY) {
+    log.plain();
+    log.warn('--interactive braucht ein TTY — Konflikte unverändert gelassen.');
+    return;
+  }
+  log.plain();
+  log.step('Interaktiv');
+  for (const cf of conflicts) {
+    if (!cf.id) continue;
+    let decision: 'u' | 's' | null = null;
+    while (decision === null) {
+      const raw = prompt(`  ${cf.dest} — [u]pdate / [s]kip / [d]iff?`);
+      if (raw === null) {
+        decision = 's'; // EOF ⇒ nichts überschreiben
+        break;
+      }
+      const ans = raw.trim().toLowerCase();
+      if (ans === 'u' || ans === 'update') decision = 'u';
+      else if (ans === '' || ans === 's' || ans === 'skip') decision = 's';
+      else if (ans === 'd' || ans === 'diff') {
+        const tpl = FILE_TEMPLATES.find((t) => t.id === cf.id);
+        if (tpl)
+          log.block(formatDiff(readText(abs(cwd, cf.dest)), tpl.render(ctx), { color: true }));
+      }
+    }
+    if (decision === 'u') {
+      // Gezieltes Force-Write nur dieser Datei; leere declined-Map, da der Nutzer
+      // die Übernahme explizit gewählt hat (überstimmt eine etwaige Abwahl).
+      applyFiles(
+        cwd,
+        ctx,
+        { mode, dryRun: false, force: true },
+        manifest,
+        new Map(),
+        new Set([cf.id])
+      );
+      log.ok(`${cf.dest} übernommen`);
+    } else {
+      log.skip(`${cf.dest} unverändert gelassen`);
+    }
+  }
+}
+
 export function runHarness(mode: 'init' | 'sync', flags: HarnessFlags): number {
   ensurePackageJson(flags.cwd, flags.dryRun);
   const ctx = detectContext(flags.cwd, flags.svelte);
@@ -142,9 +212,20 @@ export function runHarness(mode: 'init' | 'sync', flags: HarnessFlags): number {
   const capStates = resolveCapabilities(ctx, manifest);
   const declined = declinedSets(capStates);
 
+  // --only: Auswahl auf konkrete Bausteine auflösen (null = alle).
+  const validFileIds = new Set(FILE_TEMPLATES.map((t) => t.id));
+  const selection: Selection | null =
+    flags.only.length > 0 ? resolveSelection(flags.only, validFileIds) : null;
+  const onlyFiles = selection ? selection.files : null;
+  const onlyPkg: PkgSet | undefined = selection
+    ? { scripts: selection.scripts, devDeps: selection.devDeps }
+    : undefined;
+
   const label = mode === 'init' ? 'udx init' : 'udx sync';
   log.title(`${label} — ${ctx.projectName}${ctx.svelte ? c.gray(' (svelte)') : ''}`);
   if (flags.dryRun) log.info(`${c.yellow('Dry-Run')} — es wird nichts geschrieben`);
+  if (selection && selection.unknown.length > 0)
+    log.warn(`--only: unbekannt, ignoriert: ${selection.unknown.join(', ')}`);
 
   log.plain();
   log.step('Dateien');
@@ -153,17 +234,32 @@ export function runHarness(mode: 'init' | 'sync', flags: HarnessFlags): number {
     ctx,
     { mode, dryRun: flags.dryRun, force: flags.force, diff: flags.diff },
     manifest,
-    declined.files
+    declined.files,
+    onlyFiles
   );
-  results.push(ensureBunfig(ctx.cwd, flags.dryRun));
+  if (!selection) results.push(ensureBunfig(ctx.cwd, flags.dryRun));
   for (const r of results) {
     reportAction(r.action, r.dest, r.note);
     if (r.diff) log.block(r.diff);
   }
+  if (selection && results.length === 0)
+    log.warn('--only: keine passende Datei angewandt (ggf. greift die applies-Bedingung nicht).');
 
-  reportCapabilities(capStates, manifest, flags.dryRun);
+  // Frische Auto-Abwahlen immer merken; anzeigen aber nur ohne --only (chirurgischer Fokus).
+  if (!flags.dryRun) persistDeclines(capStates, manifest);
+  if (!selection) reportCapabilities(capStates);
 
-  patchPkg(ctx, flags.dryRun, flags.force, declined);
+  patchPkg(ctx, flags.dryRun, flags.force, declined, onlyPkg);
+
+  if (flags.interactive && !flags.dryRun) {
+    runInteractive(
+      ctx.cwd,
+      ctx,
+      mode,
+      manifest,
+      results.filter((r) => r.action === 'conflict')
+    );
+  }
 
   manifest.harness = CLI_VERSION;
   if (writeManifest(ctx.cwd, manifest, flags.dryRun)) {

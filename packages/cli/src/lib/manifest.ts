@@ -13,12 +13,14 @@ export interface Manifest {
   harness: string;
   /** Abgewählte Capabilities: id → Grund (erkanntes Konkurrenz-Tool oder `manual`). */
   declined: Record<string, string>;
+  /** Explizit aufgenommene Capabilities — überstimmen die Auto-Abwahl (z. B. lefthook trotz husky). */
+  adopted: string[];
   /** sha256 des zuletzt von udx geschriebenen Inhalts je managed-Datei. */
   files: Record<string, string>;
 }
 
 export function emptyManifest(): Manifest {
-  return { harness: '', declined: {}, files: {} };
+  return { harness: '', declined: {}, adopted: [], files: {} };
 }
 
 export function hashContent(content: string): string {
@@ -34,6 +36,7 @@ export function readManifest(cwd: string): Manifest {
     return {
       harness: typeof raw.harness === 'string' ? raw.harness : '',
       declined: cleanStringRecord(raw.declined),
+      adopted: Array.isArray(raw.adopted) ? raw.adopted.filter((x) => typeof x === 'string') : [],
       files: cleanStringRecord(raw.files)
     };
   } catch {
@@ -44,7 +47,12 @@ export function readManifest(cwd: string): Manifest {
 /** Serialisiert mit stabiler Schlüsselreihenfolge — ruhige git-Diffs zwischen Läufen. */
 function serialize(m: Manifest): string {
   return `${JSON.stringify(
-    { harness: m.harness, declined: sortObj(m.declined), files: sortObj(m.files) },
+    {
+      harness: m.harness,
+      declined: sortObj(m.declined),
+      adopted: [...m.adopted].sort(),
+      files: sortObj(m.files)
+    },
     null,
     2
   )}\n`;

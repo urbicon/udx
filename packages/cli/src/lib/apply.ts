@@ -15,6 +15,8 @@ export interface ApplyOptions {
 
 export interface FileResult {
   dest: string;
+  /** FILE_TEMPLATE-Id (nur für Template-Dateien; z. B. `bunfig.toml` hat keine). */
+  id?: string;
   action: FileAction;
   note?: string;
   /** Gefärbter Diff lokal → Template (nur gesetzt, wenn `opts.diff` und Drift vorliegt). */
@@ -33,17 +35,25 @@ export function applyFiles(
   ctx: RenderCtx,
   opts: ApplyOptions,
   manifest: Manifest,
-  declined: ReadonlyMap<string, string> = new Map()
+  declined: ReadonlyMap<string, string> = new Map(),
+  only: ReadonlySet<string> | null = null
 ): FileResult[] {
   const results: FileResult[] = [];
 
   for (const t of FILE_TEMPLATES) {
     if (t.applies && !t.applies(ctx)) continue;
+    // --only: auf die ausgewählten Bausteine beschränken (der Rest bleibt unberührt).
+    if (only && !only.has(t.id)) continue;
 
     // Abgewählte Capability (z. B. lefthook bei vorhandenem husky) → nicht verwalten.
     const declinedReason = declined.get(t.id);
     if (declinedReason) {
-      results.push({ dest: t.dest, action: 'skipped', note: `abgewählt (${declinedReason})` });
+      results.push({
+        dest: t.dest,
+        id: t.id,
+        action: 'skipped',
+        note: `abgewählt (${declinedReason})`
+      });
       continue;
     }
 
@@ -55,11 +65,11 @@ export function applyFiles(
 
     // 1. Datei fehlt → anlegen.
     if (!exists(target)) {
-      if (opts.dryRun) results.push({ dest: t.dest, action: 'would-create' });
+      if (opts.dryRun) results.push({ dest: t.dest, id: t.id, action: 'would-create' });
       else {
         writeText(target, content, t.mode);
         remember();
-        results.push({ dest: t.dest, action: 'created' });
+        results.push({ dest: t.dest, id: t.id, action: 'created' });
       }
       continue;
     }
@@ -69,13 +79,13 @@ export function applyFiles(
     // 2. Bereits aktuell — Hash nachtragen (deckt Erstmigration ohne Manifest ab).
     if (local === content) {
       remember();
-      results.push({ dest: t.dest, action: 'unchanged' });
+      results.push({ dest: t.dest, id: t.id, action: 'unchanged' });
       continue;
     }
 
     // 3. create-only: vorhandene Datei nie anfassen.
     if (t.policy === 'create-only') {
-      results.push({ dest: t.dest, action: 'skipped', note: 'create-only, vorhanden' });
+      results.push({ dest: t.dest, id: t.id, action: 'skipped', note: 'create-only, vorhanden' });
       continue;
     }
 
@@ -87,14 +97,19 @@ export function applyFiles(
     let result: FileResult;
     if (!allowUpdate) {
       result = pristine
-        ? { dest: t.dest, action: 'skipped', note: 'veraltet — `udx sync` aktualisiert' }
-        : { dest: t.dest, action: 'conflict', note: 'lokal geändert — `--force` überschreibt' };
+        ? { dest: t.dest, id: t.id, action: 'skipped', note: 'veraltet — `udx sync` aktualisiert' }
+        : {
+            dest: t.dest,
+            id: t.id,
+            action: 'conflict',
+            note: 'lokal geändert — `--force` überschreibt'
+          };
     } else if (opts.dryRun) {
-      result = { dest: t.dest, action: 'would-update' };
+      result = { dest: t.dest, id: t.id, action: 'would-update' };
     } else {
       writeText(target, content, t.mode);
       remember();
-      result = { dest: t.dest, action: 'updated' };
+      result = { dest: t.dest, id: t.id, action: 'updated' };
     }
 
     // Diff vor dem (möglichen) Schreiben aus `local` berechnet: zeigt, was sich ändert.

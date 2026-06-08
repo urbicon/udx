@@ -98,7 +98,9 @@ export function runDoctor(flags: DoctorFlags): number {
 
   log.plain();
   log.step('package.json');
-  const plan = computePkgPlan(ctx, { scripts: declined.scripts, devDeps: declined.devDeps });
+  const plan = computePkgPlan(ctx, {
+    skip: { scripts: declined.scripts, devDeps: declined.devDeps }
+  });
   if (plan.scriptsToAdd.length === 0) pass('Scripts vollständig');
   else fail(`fehlende Scripts: ${plan.scriptsToAdd.map((s) => s.name).join(', ')}`);
   if (plan.devDepsToAdd.length === 0) pass('devDeps vollständig');
