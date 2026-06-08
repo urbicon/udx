@@ -4,6 +4,22 @@ All notable changes to this project will be documented in this file.
 This changelog is automatically generated from [Conventional Commits](https://www.conventionalcommits.org).
 
 
+## [0.1.2] - 2026-06-08
+
+### Bug Fixes
+- **cli**: Tighten cross-feature interactions from integrative review
+
+### Documentation
+- **cli**: Document 3-way sync, capabilities, --only/--diff/--interactive, monorepo
+
+### Features
+- **cli**: Add .udx.json manifest with 3-way drift detection
+- **cli**: Add capabilities with auto-decline for foreign stacks
+- **cli**: Add --diff to show local-vs-template changes on drift
+- **cli**: Add --only and --interactive for selective sync/migration
+- **cli**: Add monorepo workspace support (per-package tsconfig)
+- **cli**: Normalize internal dep ranges and stage lockfile in bump.sh
+
 ## [0.1.1] - 2026-05-30
 
 ### Bug Fixes
