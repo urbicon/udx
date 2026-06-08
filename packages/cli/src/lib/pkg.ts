@@ -58,6 +58,27 @@ export function canonicalDevDeps(ctx: ProjectContext): Partial<Record<DepName, s
   return out;
 }
 
+/** Erste vollständige `x.y.z`-Version (der Floor) aus einer Range: `^1.2.3`→`1.2.3`, `>=2.0.0 <3`→`2.0.0`. */
+function floorVersion(range: string): string | null {
+  return range.match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/)?.[0] ?? null;
+}
+
+/**
+ * Die Pins in `versions.ts` sind eine **Baseline** (Mindestversion), kein exakter Sollwert: hat ein
+ * Projekt bereits eine neuere, kompatible Version, ist der Pin erfüllt — udx zieht Projekte aufs
+ * Minimum hoch, setzt sie aber nie herunter (sonst entstünde das @types/node-Downgrade). Nur eine
+ * echt ältere Version gilt als Drift. `workspace:`/`catalog:` (Monorepo bzw. Bun-Catalog regeln die
+ * Version anderswo) und nicht vergleichbare Ranges (git-URL, `*`, …) gelten als erfüllt — ein
+ * Downgrade von etwas, das wir nicht semantisch vergleichen können, wäre gefährlich.
+ */
+export function satisfiesPin(current: string, pin: string): boolean {
+  if (current.startsWith('workspace:') || current.startsWith('catalog:')) return true;
+  const cur = floorVersion(current);
+  const want = floorVersion(pin);
+  if (cur === null || want === null) return true;
+  return Bun.semver.order(cur, want) >= 0;
+}
+
 export interface PkgSet {
   scripts?: ReadonlySet<string>;
   devDeps?: ReadonlySet<string>;
@@ -88,8 +109,8 @@ export function computePkgPlan(ctx: ProjectContext, filter: PkgFilter = {}): Pkg
     if (skip?.devDeps?.has(name)) continue;
     const current = devDeps[name];
     if (current === undefined) plan.devDepsToAdd.push({ name, to: to as string });
-    // `workspace:*` (Monorepo-interne Pakete) gilt als erfüllt — kein Drift.
-    else if (!current.startsWith('workspace:') && current !== to) {
+    // Drift nur, wenn das Projekt echt hinter dem Pin liegt (nicht bei neuerer kompatibler Version).
+    else if (!satisfiesPin(current, to as string)) {
       plan.devDepsDrift.push({ name, to: to as string, from: current });
     }
   }

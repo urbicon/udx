@@ -21,7 +21,13 @@ import {
   readManifest,
   writeManifest
 } from '../src/lib/manifest.ts';
-import { canonicalDevDeps, canonicalScripts, computePkgPlan, mutatePkg } from '../src/lib/pkg.ts';
+import {
+  canonicalDevDeps,
+  canonicalScripts,
+  computePkgPlan,
+  mutatePkg,
+  satisfiesPin
+} from '../src/lib/pkg.ts';
 import { VERSIONS } from '../src/lib/versions.ts';
 import { isTypeScriptPackage, resolveWorkspaces } from '../src/lib/workspace.ts';
 import { FILE_TEMPLATES } from '../src/templates/index.ts';
@@ -559,6 +565,50 @@ describe('computePkgPlan', () => {
     expect(plan.devDepsToAdd.some((d) => d.name === '@biomejs/biome')).toBe(false);
     expect(plan.devDepsDrift.some((d) => d.name === '@biomejs/biome')).toBe(false);
   });
+
+  test('neuere kompatible devDep-Version ist kein Drift (kein Downgrade)', () => {
+    // Eine höhere Patch-Version als der Pin erfüllt die Baseline ⇒ udx fasst sie nicht an.
+    const [maj, min, patch] = VERSIONS['@types/node'].replace('^', '').split('.').map(Number);
+    const newer = `^${maj}.${min}.${(patch as number) + 1}`;
+    const plan = computePkgPlan(
+      detectContext(project({ name: 'x', devDependencies: { '@types/node': newer } }))
+    );
+    expect(plan.devDepsToAdd.some((d) => d.name === '@types/node')).toBe(false);
+    expect(plan.devDepsDrift.some((d) => d.name === '@types/node')).toBe(false);
+  });
+
+  test('ältere devDep-Version ist Drift (Projekt liegt hinter dem Pin)', () => {
+    const plan = computePkgPlan(
+      detectContext(project({ name: 'x', devDependencies: { '@types/node': '^25.0.0' } }))
+    );
+    expect(plan.devDepsDrift.some((d) => d.name === '@types/node')).toBe(true);
+  });
+});
+
+describe('satisfiesPin', () => {
+  test('neuere kompatible Version erfüllt den Pin (kein Downgrade)', () => {
+    expect(satisfiesPin('^25.9.2', '^25.9.1')).toBe(true);
+    expect(satisfiesPin('^26.0.0', '^25.9.1')).toBe(true); // höhere Major bleibt unberührt
+  });
+
+  test('gleicher Floor erfüllt den Pin', () => {
+    expect(satisfiesPin('^0.1.4', '^0.1.4')).toBe(true);
+  });
+
+  test('ältere Version erfüllt den Pin nicht (= Drift)', () => {
+    expect(satisfiesPin('^0.1.2', '^0.1.4')).toBe(false);
+    expect(satisfiesPin('~1.2.3', '^1.3.0')).toBe(false);
+  });
+
+  test('workspace:/catalog: gelten als erfüllt (Version anderswo geregelt)', () => {
+    expect(satisfiesPin('workspace:*', '^2.4.16')).toBe(true);
+    expect(satisfiesPin('catalog:', '^25.9.1')).toBe(true);
+  });
+
+  test('nicht vergleichbare Range gilt als erfüllt (kein riskantes Downgrade)', () => {
+    expect(satisfiesPin('github:foo/bar', '^1.0.0')).toBe(true);
+    expect(satisfiesPin('*', '^1.0.0')).toBe(true);
+  });
 });
 
 describe('mutatePkg', () => {
@@ -761,6 +811,20 @@ describe('Versionierung', () => {
     expect(VERSIONS['@urbicon/biome-config']).toBe(`^${own}`);
     expect(VERSIONS['@urbicon/commitlint-config']).toBe(`^${own}`);
     expect(VERSIONS['@urbicon/tsconfig']).toBe(`^${own}`);
+  });
+
+  test('Third-Party-Pins entsprechen den eigenen Workspace-Deps (kein Pin-Lag)', () => {
+    // versions.ts ist handgepflegt und entkoppelt von `bun outdated`: bumpt man die eigenen
+    // Workspace-Deps, müssen die Consumer-Pins mitgezogen werden. Dieser Test macht ein
+    // Zurückbleiben sichtbar (statt es still an Consumer weiterzureichen, was Downgrades provoziert).
+    const rootDev: Record<string, string> =
+      JSON.parse(readFileSync(join(import.meta.dir, '..', '..', '..', 'package.json'), 'utf8'))
+        .devDependencies ?? {};
+    for (const [name, pin] of Object.entries(VERSIONS)) {
+      const own = rootDev[name];
+      if (!own || own.startsWith('workspace:')) continue; // nur Deps, die udx selbst als Range nutzt
+      expect(`${name}: ${pin}`).toBe(`${name}: ${own}`);
+    }
   });
 
   test('alle Workspace-Pakete tragen dieselbe Version', () => {

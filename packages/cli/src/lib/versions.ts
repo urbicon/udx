@@ -14,10 +14,10 @@ const SELF = `^${cliPkg.version}`;
 /** Gepinnte Versionen, die `udx init`/`udx sync` in Consumer-Projekte schreiben. */
 export const VERSIONS = {
   '@biomejs/biome': '^2.4.16',
-  '@commitlint/cli': '^21.0.1',
-  lefthook: '^1.8.0',
+  '@commitlint/cli': '^21.0.2',
+  lefthook: '^1.13.6',
   'git-cliff': '^2.13.1',
-  '@types/node': '^25.9.1',
+  '@types/node': '^25.9.2',
   'bun-types': '^1.3.14',
   typescript: '^6.0.3',
   '@urbicon/biome-config': SELF,
