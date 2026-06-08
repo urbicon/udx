@@ -52,12 +52,12 @@ sieht den Zustand statt ihn zu erfragen, und löst riskante Aktionen nur bewusst
 - [x] udx-Root-`biome.json` ignoriert `.svelte` (nur lokal; publizierte `biome-base` unberührt).
 - [x] committen + Review → Befund (prettier-Scope) behoben (`.prettierignore`). _Caveat:_ `bun outdated` zeigt named-Catalogs (`catalogs.svelte`) evtl. nicht — in WP7 verifizieren.
 
-### WP4 — D4: `udx status` (Sichtbarkeit) + Klassifikations-Engine
-- [ ] Gemeinsame Klassifikation (in sync / behind↑ / ahead⟳ / customized✎ / missing+ / pinned⊙ / declined⊘) aus `computePkgPlan` + `applyFiles`-Dry ableiten.
-- [ ] `commands/status.ts`: nach Baustein gruppierte Tabelle, pro Zeile Befehl; `--json`/`--ci`.
-- [ ] `bin/udx.ts`: `status`-Command + bare `udx` → status; `doctor` ruft dieselbe Engine (`--ci`).
-- [ ] Tests für Klassifikation + Rendering (color:false).
-- [ ] committen + Review.
+### WP4 — D4: `udx status` (Sichtbarkeit) + Klassifikations-Engine  ✅ committet + reviewed
+- [x] Klassifikation (in sync✓ / behind↑ / customized✎ / missing+ / pinned⊙ / declined⊘) aus `computePkgPlan` + `applyFiles`-Dry abgeleitet.
+- [x] `commands/status.ts`: nach Baustein/Dateien/package.json/Registry gruppierte Tabelle, pro Zeile Befehl; Legende + Summary; `--json`.
+- [x] `bin/udx.ts`: `status`-Command + bare `udx` → status; `doctor` bleibt die CI-Variante (Exit-Codes), teilt die Engines.
+- [x] Tests für Klassifikation (`buildReport`) + runStatus-Smoke.
+- [x] committen + Review → Befunde (String-Match, try/catch, redundanter Read, in-sync-Zählung) behoben.
 
 ### WP5 — D5: sichere Sync-Semantik + `pin/unpin`  ✅ committet + reviewed
 - [x] `mutatePkg`: `devDepsDrift`(=behind) im **Nicht-Force**-Pfad anwenden (nie Downgrade); `scriptsDrift` bleibt Force-only.
