@@ -1,0 +1,3 @@
+# Biome ist für alles außer .svelte zuständig.
+**/*
+!**/*.svelte
