@@ -134,6 +134,12 @@ describe('applyFiles', () => {
     apply(dir, detectContext(dir), INIT);
     expect(existsSync(join(dir, '.prettierrc'))).toBe(false);
   });
+
+  test('biome.json schließt .svelte immer aus — auch ohne Svelte (Monorepo-Root-Schutz)', () => {
+    const dir = project({ name: 'x' }); // reines TS, kein svelte
+    apply(dir, detectContext(dir), INIT);
+    expect(readFileSync(join(dir, 'biome.json'), 'utf8')).toContain('!**/*.svelte');
+  });
 });
 
 describe('3-Wege-Drift (managed)', () => {

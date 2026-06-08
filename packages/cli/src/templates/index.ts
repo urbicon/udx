@@ -57,16 +57,16 @@ commit-msg:
 `;
 }
 
-function renderBiome(ctx: RenderCtx): string {
+function renderBiome(): string {
+  // `.svelte` IMMER ausschließen — Biome verarbeitet Svelte nicht (das übernehmen Prettier +
+  // svelte-check). Auch der nicht-svelte Monorepo-Root braucht den Ausschluss, sonst stolpert
+  // `biome check .` über `.svelte` in Sub-Paketen. Der CHANGELOG-Ausschluss aus biome-base muss
+  // wiederholt werden, da `files.includes` das Base überschreibt.
   const config: Record<string, unknown> = {
     $schema: BIOME_SCHEMA,
-    extends: ['@urbicon/biome-config/biome-base.json']
+    extends: ['@urbicon/biome-config/biome-base.json'],
+    files: { includes: ['**', '!**/*.svelte', '!**/CHANGELOG.md'] }
   };
-  if (ctx.svelte) {
-    // .svelte übernimmt Prettier; alles andere Biome. Der CHANGELOG-Ausschluss aus
-    // biome-base muss hier wiederholt werden, da files.includes das Base überschreibt.
-    config.files = { includes: ['**', '!**/*.svelte', '!**/CHANGELOG.md'] };
-  }
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
