@@ -1,0 +1,18 @@
+{
+  "name": "@urbicon/svelte-fixture",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Internes Smoke-Test-Paket: dogfoodet den vorgeschriebenen Svelte-Toolstack (catalog:svelte) und hält dessen Versionen für `bun outdated` sichtbar (referenziert den svelte-Catalog).",
+  "scripts": {
+    "check": "prettier --check . && svelte-check --tsconfig ./tsconfig.json",
+    "test": "true"
+  },
+  "devDependencies": {
+    "prettier": "catalog:svelte",
+    "prettier-plugin-svelte": "catalog:svelte",
+    "prettier-plugin-tailwindcss": "catalog:svelte",
+    "svelte": "^5",
+    "svelte-check": "catalog:svelte"
+  }
+}
