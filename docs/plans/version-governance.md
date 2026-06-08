@@ -67,11 +67,11 @@ sieht den Zustand statt ihn zu erfragen, und löst riskante Aktionen nur bewusst
 - [x] Tests: Auto-Pull-up ohne Force, Pin hält, unpin löst, pinned-absent gemeldet.
 - [x] committen + Review → Befunde (gepinnt-fehlend still; unnötiger Roundtrip) behoben.
 
-### WP6 — D6/D7: `add`/`remove` + Naming-Aliase
-- [ ] `add`/`remove` als Dev-facing Verben (über `adopt`/`skip` + scoped sync); `status` als Primärname, `doctor` Alias.
-- [ ] Hilfe/`HELP` aktualisieren; Back-Compat-Aliase erhalten.
-- [ ] Tests + Hilfe-Snapshot.
-- [ ] committen + Review.
+### WP6 — D6/D7: `add`/`remove` + Naming-Aliase  ✅ committet
+- [x] `add` (= adopt + gezielter `sync --only`, überstimmt Auto-Abwahl, Dry-Run-treu via durchgereichtem `manifestOverride`) / `remove` (= decline, Dateien bleiben) als Dev-facing Verben; `status` Primärname.
+- [x] `HELP` → `commands/help.ts` (`helpText(version)`, ohne bin-Selbstausführung testbar); `adopt`/`skip`/`doctor` raus aus der Befehlstabelle in eine Aliase-Fußnote; Ausgabe-Hinweise (status/doctor/sync) auf `add`/`remove` umgestellt. Back-Compat-Aliase (`adopt`/`skip`/`doctor`) erhalten.
+- [x] Tests: runAdd (einrichten, husky-Override, Dry-Run, exit 2), manifestOverride-Treue; versionsneutraler ANSI-freier Hilfe-Snapshot.
+- [x] committen + Review (zwei Agenten: Konventionen/Korrektheit + Bug-/Logik-Hunt) → keine Befunde ≥ Schwelle; Manifest-Persistenz, Dry-Run-Treue, Back-Compat & Snapshot bestätigt.
 
 ### WP7 — D2: `stack:update`-Script + Renovate
 - [ ] `scripts/stack-update.ts`: Registry-`fetch` je Catalog-Eintrag, `--minor`/`--major`-Gate, schreibt Catalog. (`bun outdated -r` bleibt menschliche Sicht.)
