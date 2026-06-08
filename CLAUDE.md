@@ -80,12 +80,14 @@ CLI lokal ausführen ohne Build: `bun run packages/cli/src/bin/udx.ts <befehl>`.
 - **Tool-Versionen** sind im **Bun-Catalog** der Root-`package.json`
   (`workspaces.catalog` + `catalogs.svelte`) zentral gepinnt — die Single Source of
   Truth. `versions.ts` *liest* sie nur und leitet die Consumer-Pins ab; `@urbicon/*`
-  sind unified mit der CLI-Version (nicht im Catalog). **Anheben** via `bump.sh`
-  passiert nicht — der Stack wird separat aktualisiert: **Renovate** (Default,
-  `renovate.json`, `rangeStrategy: bump`) oder manuell
-  `bun run stack:update [--minor|--major]` (Default-Gate = nur Patch, schreibt den
-  Catalog operator-erhaltend). `bun outdated -r` ist die Lesesicht — zeigt named-Catalogs
-  (`catalogs.svelte`) **nicht** an, daher das Script.
+  sind unified mit der CLI-Version (nicht im Catalog). Der Stack wird **getrennt vom
+  Release-`bump.sh`** angehoben:
+  - **Renovate** (Default, `renovate.json`, `rangeStrategy: bump`). Renovate kennt
+    Bun-Catalogs (anders als pnpm/yarn) **nicht nativ** → ein Regex-`customManager`
+    erfasst die Catalog-Versions-Strings; Config mit `renovate-config-validator` prüfbar.
+  - manuell `bun run stack:update [--minor|--major]` (Default-Gate = nur Patch, schreibt
+    operator-erhaltend, nie Downgrade, bei Fehlern gar nicht).
+  - `bun outdated -r` = Lesesicht, zeigt named-Catalogs (`catalogs.svelte`) **nicht** — daher das Script.
 - **Dogfooding**: Root-Configs nutzen die eigenen Pakete. Nach Änderungen an einem
   Config-Paket prüfen, dass das Root-Setup weiter lädt.
 
