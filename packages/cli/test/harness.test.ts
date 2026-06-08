@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runAdopt, runSkip } from '../src/commands/capability.ts';
+import { runHarness } from '../src/commands/harness.ts';
 import { type ApplyOptions, applyFiles, ensureBunfig, URBICON_REGISTRY } from '../src/lib/apply.ts';
 import {
   CAPABILITIES,
@@ -22,6 +23,7 @@ import {
 } from '../src/lib/manifest.ts';
 import { canonicalDevDeps, canonicalScripts, computePkgPlan, mutatePkg } from '../src/lib/pkg.ts';
 import { VERSIONS } from '../src/lib/versions.ts';
+import { isTypeScriptPackage, resolveWorkspaces } from '../src/lib/workspace.ts';
 import { FILE_TEMPLATES } from '../src/templates/index.ts';
 
 function project(pkg: Record<string, unknown>): string {
@@ -29,6 +31,29 @@ function project(pkg: Record<string, unknown>): string {
   writeFileSync(join(dir, 'package.json'), JSON.stringify(pkg));
   return dir;
 }
+
+/** Legt ein Monorepo an: Root + packages/api (TS, mit src/) + packages/ui (Svelte). `objectForm` nutzt `workspaces.packages`. */
+function monorepo(objectForm = false): string {
+  const dir = mkdtempSync(join(tmpdir(), 'udx-mono-'));
+  const workspaces = objectForm ? { packages: ['packages/*'] } : ['packages/*'];
+  writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'root', workspaces }));
+  mkdirSync(join(dir, 'packages/api/src'), { recursive: true }); // src/ ⇒ TS-Paket
+  writeFileSync(join(dir, 'packages/api/package.json'), JSON.stringify({ name: 'api' }));
+  mkdirSync(join(dir, 'packages/ui'), { recursive: true });
+  writeFileSync(
+    join(dir, 'packages/ui/package.json'),
+    JSON.stringify({ name: 'ui', devDependencies: { svelte: '^5' } })
+  );
+  return dir;
+}
+
+const HARNESS_DEFAULTS = {
+  force: false,
+  svelte: undefined,
+  diff: false,
+  only: [],
+  interactive: false
+};
 
 /** applyFiles mit frischem Manifest (für Tests, die den Manifest-State nicht selbst stellen). */
 function apply(
@@ -545,6 +570,73 @@ describe('ensureBunfig', () => {
     const dir = project({ name: 'x' });
     expect(ensureBunfig(dir, true).action).toBe('would-create');
     expect(existsSync(join(dir, 'bunfig.toml'))).toBe(false);
+  });
+});
+
+describe('Workspace-/Paket-Support', () => {
+  test('resolveWorkspaces erkennt die Array-Form', () => {
+    const dir = monorepo();
+    const pkg = detectContext(dir).pkg;
+    expect(resolveWorkspaces(dir, pkg)).toEqual(['packages/api', 'packages/ui']);
+  });
+
+  test('resolveWorkspaces erkennt die Objekt-Form (workspaces.packages)', () => {
+    const dir = monorepo(true);
+    const pkg = detectContext(dir).pkg;
+    expect(resolveWorkspaces(dir, pkg)).toEqual(['packages/api', 'packages/ui']);
+  });
+
+  test('Single-Package ⇒ keine Workspaces', () => {
+    const dir = project({ name: 'x' });
+    expect(resolveWorkspaces(dir, detectContext(dir).pkg)).toEqual([]);
+  });
+
+  test('isTypeScriptPackage: TS-Paket (src/ oder dep) ja, reines Asset-Paket nein', () => {
+    const tsDir = project({ name: 'ts', devDependencies: { typescript: '^6' } });
+    expect(isTypeScriptPackage(tsDir, detectContext(tsDir).pkg)).toBe(true);
+    const assetDir = project({ name: 'asset' }); // nur package.json, kein src/, kein TS-dep
+    expect(isTypeScriptPackage(assetDir, detectContext(assetDir).pkg)).toBe(false);
+  });
+
+  test('init überspringt reine Asset-Pakete (keine tsconfig)', () => {
+    const dir = monorepo();
+    // ein reines Asset-Paket ohne src/ und ohne TS-Signal:
+    mkdirSync(join(dir, 'packages/assets'), { recursive: true });
+    writeFileSync(join(dir, 'packages/assets/package.json'), JSON.stringify({ name: 'assets' }));
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    expect(existsSync(join(dir, 'packages/assets/tsconfig.json'))).toBe(false);
+    expect(existsSync(join(dir, 'packages/api/tsconfig.json'))).toBe(true); // TS-Paket
+  });
+
+  test('package-scoped Templates sind create-only (sonst Hash-Kollision im Monorepo)', () => {
+    for (const t of FILE_TEMPLATES) {
+      if ((t.scope ?? 'root') === 'package') expect(t.policy).toBe('create-only');
+    }
+  });
+
+  test('scope-Filter trennt Root- von Paket-Bausteinen', () => {
+    const dir = project({ name: 'x' });
+    const ctx = detectContext(dir);
+    applyFiles(dir, ctx, { ...INIT, scope: 'root' }, emptyManifest());
+    expect(existsSync(join(dir, 'cliff.toml'))).toBe(true);
+    expect(existsSync(join(dir, 'tsconfig.json'))).toBe(false); // package-scoped, nicht im Root
+
+    const dir2 = project({ name: 'y' });
+    applyFiles(dir2, detectContext(dir2), { ...INIT, scope: 'package' }, emptyManifest());
+    expect(existsSync(join(dir2, 'tsconfig.json'))).toBe(true);
+    expect(existsSync(join(dir2, 'cliff.toml'))).toBe(false); // root-scoped, nicht hier
+  });
+
+  test('init in Monorepo: tsconfig je Paket (Svelte je Paket), nicht im Root', () => {
+    const dir = monorepo();
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    expect(existsSync(join(dir, 'packages/api/tsconfig.json'))).toBe(true);
+    expect(existsSync(join(dir, 'packages/ui/tsconfig.json'))).toBe(true);
+    expect(existsSync(join(dir, 'tsconfig.json'))).toBe(false); // Root unberührt
+    expect(existsSync(join(dir, 'cliff.toml'))).toBe(true); // Root-Baustein da
+    // Svelte je Paket erkannt:
+    expect(readFileSync(join(dir, 'packages/ui/tsconfig.json'), 'utf8')).toContain('svelte');
+    expect(readFileSync(join(dir, 'packages/api/tsconfig.json'), 'utf8')).toContain('base.json');
   });
 });
 

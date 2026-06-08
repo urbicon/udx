@@ -7,6 +7,7 @@ import { abs, exists, readText } from '../lib/fs.ts';
 import { log } from '../lib/log.ts';
 import { hashContent, readManifest } from '../lib/manifest.ts';
 import { computePkgPlan } from '../lib/pkg.ts';
+import { isTypeScriptPackage, resolveWorkspaces } from '../lib/workspace.ts';
 import { FILE_TEMPLATES } from '../templates/index.ts';
 
 export interface DoctorFlags {
@@ -35,9 +36,14 @@ export function runDoctor(flags: DoctorFlags): number {
     log.err(s);
   };
 
+  const workspaces = resolveWorkspaces(ctx.cwd, ctx.pkg);
+  const isMonorepo = workspaces.length > 0;
+
   log.plain();
   log.step('Dateien');
   for (const t of FILE_TEMPLATES) {
+    // Im Monorepo werden package-scoped Bausteine je Paket geprüft (unten).
+    if (isMonorepo && (t.scope ?? 'root') !== 'root') continue;
     if (t.applies && !t.applies(ctx)) continue;
     // Abgewählte Capability → kein Soll, daher kein Fehler.
     const reason = declined.files.get(t.id);
@@ -70,6 +76,24 @@ export function runDoctor(flags: DoctorFlags): number {
     if (flags.diff) {
       const d = formatDiff(local, expected, { color: true });
       if (d) log.block(d);
+    }
+  }
+
+  // Monorepo: package-scoped Bausteine je TS-Paket (Asset-Pakete ohne TS-Code übersprungen).
+  // tsconfig ist create-only ⇒ nur Existenz prüfen, kein managed-Drift.
+  const tsPkgs = workspaces
+    .map((ws) => ({ ws, pkgCtx: detectContext(abs(ctx.cwd, ws), flags.svelte) }))
+    .filter(({ pkgCtx }) => isTypeScriptPackage(pkgCtx.cwd, pkgCtx.pkg));
+  if (tsPkgs.length > 0) {
+    log.plain();
+    log.step('Pakete');
+    for (const { ws, pkgCtx } of tsPkgs) {
+      for (const t of FILE_TEMPLATES) {
+        if ((t.scope ?? 'root') !== 'package') continue;
+        if (t.applies && !t.applies(pkgCtx)) continue;
+        if (exists(abs(pkgCtx.cwd, t.dest))) pass(`${ws}/${t.dest}`);
+        else fail(`fehlt: ${ws}/${t.dest}`);
+      }
     }
   }
 

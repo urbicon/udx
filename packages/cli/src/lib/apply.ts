@@ -1,4 +1,4 @@
-import { FILE_TEMPLATES, type RenderCtx } from '../templates/index.ts';
+import { FILE_TEMPLATES, type FileScope, type RenderCtx } from '../templates/index.ts';
 import { formatDiff } from './diff.ts';
 import { abs, exists, readText, writeText } from './fs.ts';
 import type { FileAction } from './log.ts';
@@ -11,6 +11,8 @@ export interface ApplyOptions {
   force: boolean;
   /** Bei managed-Drift den Unterschied (lokal → Template) im FileResult mitliefern. */
   diff?: boolean;
+  /** Nur Templates dieses Scopes verarbeiten; weggelassen = alle (Single-Package). */
+  scope?: FileScope;
 }
 
 export interface FileResult {
@@ -41,6 +43,8 @@ export function applyFiles(
   const results: FileResult[] = [];
 
   for (const t of FILE_TEMPLATES) {
+    // Scope-Filter: im Monorepo trennt der Caller Root- von Paket-Bausteinen.
+    if (opts.scope && (t.scope ?? 'root') !== opts.scope) continue;
     if (t.applies && !t.applies(ctx)) continue;
     // --only: auf die ausgewählten Bausteine beschränken (der Rest bleibt unberührt).
     if (only && !only.has(t.id)) continue;

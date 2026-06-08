@@ -29,6 +29,10 @@ extendet `@urbicon/biome-config` usw.).
    - **managed** → 3-Wege-Sync via `.udx.json`-Hashes: unberührt-veraltete Dateien zieht
      `udx sync` nach, lokal geänderte schützt es als Konflikt (`--force` überschreibt)
    - **create-only** → nur angelegt, wenn fehlend (Projekt-Anpassungen bleiben)
+   - **scope** `root` (Default) vs `package`: im Monorepo laufen `package`-Bausteine
+     (z. B. `tsconfig`) je Workspace-Paket (Svelte je Paket erkannt), nicht im Root.
+     Reine Asset-Pakete ohne TS-Code werden übersprungen (`isTypeScriptPackage`).
+     `package`-Bausteine müssen `create-only` sein (sonst kollidieren Manifest-Hashes)
 
 ### Capabilities (Stack-Awareness)
 
@@ -46,9 +50,9 @@ Abgewählte Bausteine sind in `init`/`sync`/`doctor` kein Soll (kein Fehler).
 - `commands/doctor.ts` — read-only Drift-Check
 - `commands/capability.ts` — `adopt`/`skip` (Bausteine auf-/abwählen)
 - `lib/` — `detect` (Svelte-Erkennung), `apply` (Datei-Engine + `bunfig.toml`),
-  `manifest` (`.udx.json`: 3-Wege-Hashes + abgewählte Bausteine),
-  `capabilities` (declinebare Stack-Bündel + Konflikterkennung),
-  `diff` (zero-dep LCS-Diff für `--diff`),
+  `manifest` (`.udx.json`: 3-Wege-Hashes + abgewählte/aufgenommene Bausteine),
+  `capabilities` (declinebare Stack-Bündel + Konflikterkennung + `--only`-Auflösung),
+  `diff` (zero-dep LCS-Diff für `--diff`), `workspace` (Monorepo-Pakete via `Bun.Glob`),
   `pkg` (package.json-Patch), `versions` (gepinnte Versionen), `fs`/`log`/`colors`
 - `templates/` — Render-Funktionen; komplexe Dateien (`cliff.toml`, `bump.sh`,
   `CLAUDE.md.tpl`) als Text-Assets unter `src/assets/` (Import via

@@ -1,5 +1,5 @@
 import { basename } from 'node:path';
-import { applyFiles, ensureBunfig, type FileResult } from '../lib/apply.ts';
+import { type ApplyOptions, applyFiles, ensureBunfig, type FileResult } from '../lib/apply.ts';
 import {
   type CapabilityState,
   type DeclinedSets,
@@ -16,6 +16,7 @@ import { log, reportAction } from '../lib/log.ts';
 import { MANIFEST_FILE, type Manifest, readManifest, writeManifest } from '../lib/manifest.ts';
 import { computePkgPlan, mutatePkg, type PkgSet } from '../lib/pkg.ts';
 import { CLI_VERSION } from '../lib/versions.ts';
+import { isTypeScriptPackage, resolveWorkspaces } from '../lib/workspace.ts';
 import { FILE_TEMPLATES } from '../templates/index.ts';
 
 export interface HarnessFlags {
@@ -221,9 +222,20 @@ export function runHarness(mode: 'init' | 'sync', flags: HarnessFlags): number {
     ? { scripts: selection.scripts, devDeps: selection.devDeps }
     : undefined;
 
+  // Monorepo: package-scoped Bausteine (tsconfig) laufen je Paket, nicht im Root.
+  const workspaces = resolveWorkspaces(ctx.cwd, ctx.pkg);
+  const isMonorepo = workspaces.length > 0;
+  const baseOpts: ApplyOptions = {
+    mode,
+    dryRun: flags.dryRun,
+    force: flags.force,
+    diff: flags.diff
+  };
+
   const label = mode === 'init' ? 'udx init' : 'udx sync';
   log.title(`${label} — ${ctx.projectName}${ctx.svelte ? c.gray(' (svelte)') : ''}`);
   if (flags.dryRun) log.info(`${c.yellow('Dry-Run')} — es wird nichts geschrieben`);
+  if (isMonorepo) log.info(c.gray(`Monorepo — ${workspaces.length} Paket(e)`));
   if (selection && selection.unknown.length > 0)
     log.warn(`--only: unbekannt, ignoriert: ${selection.unknown.join(', ')}`);
 
@@ -232,7 +244,7 @@ export function runHarness(mode: 'init' | 'sync', flags: HarnessFlags): number {
   const results: FileResult[] = applyFiles(
     ctx.cwd,
     ctx,
-    { mode, dryRun: flags.dryRun, force: flags.force, diff: flags.diff },
+    isMonorepo ? { ...baseOpts, scope: 'root' } : baseOpts,
     manifest,
     declined.files,
     onlyFiles
@@ -242,7 +254,36 @@ export function runHarness(mode: 'init' | 'sync', flags: HarnessFlags): number {
     reportAction(r.action, r.dest, r.note);
     if (r.diff) log.block(r.diff);
   }
-  if (selection && results.length === 0)
+  // Gesamtsicht über Root + Pakete (Leertreffer-Warnung & Konflikt-Footer).
+  const allResults: FileResult[] = [...results];
+
+  // Pro Paket die package-scoped Bausteine (Svelte je Paket erkannt). Asset-Pakete ohne
+  // TS-Code werden übersprungen, damit nicht überall unnötige tsconfigs entstehen.
+  if (isMonorepo) {
+    const tsPkgs = workspaces
+      .map((ws) => ({ ws, pkgCtx: detectContext(abs(ctx.cwd, ws), flags.svelte) }))
+      .filter(({ pkgCtx }) => isTypeScriptPackage(pkgCtx.cwd, pkgCtx.pkg));
+    if (tsPkgs.length > 0) {
+      log.plain();
+      log.step('Pakete');
+      for (const { ws, pkgCtx } of tsPkgs) {
+        const pkgResults = applyFiles(
+          pkgCtx.cwd,
+          pkgCtx,
+          { ...baseOpts, scope: 'package' },
+          manifest,
+          new Map(),
+          onlyFiles
+        );
+        for (const r of pkgResults) {
+          reportAction(r.action, `${ws}/${r.dest}`, r.note);
+          if (r.diff) log.block(r.diff);
+          allResults.push({ ...r, dest: `${ws}/${r.dest}` });
+        }
+      }
+    }
+  }
+  if (selection && allResults.length === 0)
     log.warn('--only: keine passende Datei angewandt (ggf. greift die applies-Bedingung nicht).');
 
   // Frische Auto-Abwahlen immer merken; anzeigen aber nur ohne --only (chirurgischer Fokus).
@@ -251,6 +292,8 @@ export function runHarness(mode: 'init' | 'sync', flags: HarnessFlags): number {
 
   patchPkg(ctx, flags.dryRun, flags.force, declined, onlyPkg);
 
+  // Interaktiv nur Root-Konflikte: package-scoped Bausteine sind create-only (s. Guard in
+  // templates/index.ts) und können daher nicht in Konflikt geraten.
   if (flags.interactive && !flags.dryRun) {
     runInteractive(
       ctx.cwd,
@@ -267,6 +310,6 @@ export function runHarness(mode: 'init' | 'sync', flags: HarnessFlags): number {
     log.skip(`Manifest ${MANIFEST_FILE} ${flags.dryRun ? 'würde aktualisiert' : 'aktualisiert'}`);
   }
 
-  printFooter(mode, ctx, flags, results, declined);
+  printFooter(mode, ctx, flags, allResults, declined);
   return 0;
 }

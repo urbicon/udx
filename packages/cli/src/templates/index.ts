@@ -14,10 +14,17 @@ export interface RenderCtx {
  */
 export type FilePolicy = 'managed' | 'create-only';
 
+/**
+ * `root`    – einmal im Projekt-Root (Default).
+ * `package` – pro Workspace-Paket (im Monorepo); im Single-Package-Projekt = Root.
+ */
+export type FileScope = 'root' | 'package';
+
 export interface FileTemplate {
   id: string;
   dest: string;
   policy: FilePolicy;
+  scope?: FileScope;
   mode?: number;
   applies?: (ctx: RenderCtx) => boolean;
   render: (ctx: RenderCtx) => string;
@@ -127,7 +134,14 @@ export const FILE_TEMPLATES: FileTemplate[] = [
   { id: 'lefthook', dest: 'lefthook.yml', policy: 'managed', render: renderLefthook },
   { id: 'bump', dest: 'scripts/bump.sh', policy: 'managed', mode: 0o755, render: () => bumpSh },
   { id: 'biome', dest: 'biome.json', policy: 'create-only', render: renderBiome },
-  { id: 'tsconfig', dest: 'tsconfig.json', policy: 'create-only', render: renderTsconfig },
+  // package-scoped: im Monorepo je Paket (Root-tsconfig bleibt projektspezifisch unberührt).
+  {
+    id: 'tsconfig',
+    dest: 'tsconfig.json',
+    policy: 'create-only',
+    scope: 'package',
+    render: renderTsconfig
+  },
   {
     id: 'commitlint',
     dest: 'commitlint.config.mjs',
@@ -156,3 +170,14 @@ export const FILE_TEMPLATES: FileTemplate[] = [
     render: (ctx) => claudeTpl.replaceAll('{{projectName}}', ctx.projectName)
   }
 ];
+
+// Invariante (fail-fast statt stiller Korruption): package-scoped Bausteine laufen je Paket,
+// teilen sich aber das eine `.udx.json` mit nach `dest` benannten Hash-Schlüsseln. Ein managed
+// package-Baustein würde diese über Pakete hinweg überschreiben — daher nur create-only zulässig.
+for (const t of FILE_TEMPLATES) {
+  if (t.scope === 'package' && t.policy !== 'create-only') {
+    throw new Error(
+      `FILE_TEMPLATES: package-scoped Baustein '${t.id}' muss create-only sein (Manifest-Hash-Kollision).`
+    );
+  }
+}
