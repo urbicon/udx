@@ -1,0 +1,64 @@
+import { CAPABILITIES, findCapability } from '../lib/capabilities.ts';
+import { c } from '../lib/colors.ts';
+import { log } from '../lib/log.ts';
+import { readManifest, writeManifest } from '../lib/manifest.ts';
+
+export interface CapabilityFlags {
+  cwd: string;
+  dryRun: boolean;
+  capability: string | undefined;
+}
+
+function listCapabilities(): void {
+  log.info('Bekannte Bausteine:');
+  for (const cap of CAPABILITIES) log.info(`  ${c.cyan(cap.id)} — ${cap.label}`);
+}
+
+/** Schließt den Baustein-Namen aus den Flags auf; meldet & listet bei Fehlern. */
+function resolve(flags: CapabilityFlags, verb: string) {
+  if (!flags.capability) {
+    log.err(`Kein Baustein angegeben — z. B. \`udx ${verb} git-hooks\``);
+    listCapabilities();
+    return undefined;
+  }
+  const cap = findCapability(flags.capability);
+  if (!cap) {
+    log.err(`Unbekannter Baustein: ${flags.capability}`);
+    listCapabilities();
+  }
+  return cap;
+}
+
+/** Wählt einen Baustein dauerhaft ab — init/sync/doctor überspringen ihn künftig. */
+export function runSkip(flags: CapabilityFlags): number {
+  const cap = resolve(flags, 'skip');
+  if (!cap) return 2;
+
+  const manifest = readManifest(flags.cwd);
+  if (manifest.declined[cap.id] !== undefined) {
+    log.info(`${cap.label} ist bereits abgewählt (${manifest.declined[cap.id]}).`);
+    return 0;
+  }
+  manifest.declined[cap.id] = 'manual';
+  writeManifest(flags.cwd, manifest, flags.dryRun);
+  log.ok(`${cap.label} abgewählt${flags.dryRun ? ' (Dry-Run)' : ''}.`);
+  log.info(c.gray(`Vorhandene Dateien bleiben. Rückgängig: \`udx adopt ${cap.id}\``));
+  return 0;
+}
+
+/** Nimmt einen abgewählten Baustein wieder auf; `udx sync` richtet ihn anschließend ein. */
+export function runAdopt(flags: CapabilityFlags): number {
+  const cap = resolve(flags, 'adopt');
+  if (!cap) return 2;
+
+  const manifest = readManifest(flags.cwd);
+  if (manifest.declined[cap.id] === undefined) {
+    log.info(`${cap.label} ist nicht abgewählt — nichts zu tun.`);
+    return 0;
+  }
+  delete manifest.declined[cap.id];
+  writeManifest(flags.cwd, manifest, flags.dryRun);
+  log.ok(`${cap.label} aufgenommen${flags.dryRun ? ' (Dry-Run)' : ''}.`);
+  log.info(c.gray('Einrichten mit `udx sync`.'));
+  return 0;
+}

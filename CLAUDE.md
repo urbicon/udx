@@ -30,13 +30,24 @@ extendet `@urbicon/biome-config` usw.).
      `udx sync` nach, lokal geänderte schützt es als Konflikt (`--force` überschreibt)
    - **create-only** → nur angelegt, wenn fehlend (Projekt-Anpassungen bleiben)
 
+### Capabilities (Stack-Awareness)
+
+`lib/capabilities.ts` bündelt stack-spezifische Bausteine (Datei + Scripts + devDeps) zu
+declinebaren Einheiten (`git-hooks`→lefthook, `lint-format`→biome). `supersededBy(ctx)`
+erkennt **generisch** (über deps/Dateien, nie über Projektnamen) einen konkurrierenden
+Stack (husky, eslint, …); der Baustein wird dann automatisch abgewählt und die Entscheidung
+in `.udx.json` `declined` persistiert. `udx adopt <id>` / `udx skip <id>` steuern das manuell.
+Abgewählte Bausteine sind in `init`/`sync`/`doctor` kein Soll (kein Fehler).
+
 ### CLI-Aufbau (`packages/cli/src`)
 
 - `bin/udx.ts` — Arg-Parsing + Dispatch (zero runtime deps)
 - `commands/harness.ts` — geteilte `init`/`sync`-Logik
 - `commands/doctor.ts` — read-only Drift-Check
+- `commands/capability.ts` — `adopt`/`skip` (Bausteine auf-/abwählen)
 - `lib/` — `detect` (Svelte-Erkennung), `apply` (Datei-Engine + `bunfig.toml`),
   `manifest` (`.udx.json`: 3-Wege-Hashes + abgewählte Bausteine),
+  `capabilities` (declinebare Stack-Bündel + Konflikterkennung),
   `pkg` (package.json-Patch), `versions` (gepinnte Versionen), `fs`/`log`/`colors`
 - `templates/` — Render-Funktionen; komplexe Dateien (`cliff.toml`, `bump.sh`,
   `CLAUDE.md.tpl`) als Text-Assets unter `src/assets/` (Import via

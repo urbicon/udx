@@ -1,4 +1,5 @@
 import { URBICON_REGISTRY } from '../lib/apply.ts';
+import { declinedSets, resolveCapabilities } from '../lib/capabilities.ts';
 import { c } from '../lib/colors.ts';
 import { detectContext } from '../lib/detect.ts';
 import { abs, exists, readText } from '../lib/fs.ts';
@@ -15,6 +16,8 @@ export interface DoctorFlags {
 export function runDoctor(flags: DoctorFlags): number {
   const ctx = detectContext(flags.cwd, flags.svelte);
   const manifest = readManifest(ctx.cwd);
+  const capStates = resolveCapabilities(ctx, manifest);
+  const declined = declinedSets(capStates);
   log.title(`udx doctor — ${ctx.projectName}${ctx.svelte ? c.gray(' (svelte)') : ''}`);
 
   let fails = 0;
@@ -33,6 +36,12 @@ export function runDoctor(flags: DoctorFlags): number {
   log.step('Dateien');
   for (const t of FILE_TEMPLATES) {
     if (t.applies && !t.applies(ctx)) continue;
+    // Abgewählte Capability → kein Soll, daher kein Fehler.
+    const reason = declined.files.get(t.id);
+    if (reason) {
+      log.skip(`${t.dest} abgewählt (${reason})`);
+      continue;
+    }
     const target = abs(ctx.cwd, t.dest);
     if (!exists(target)) {
       fail(`fehlt: ${t.dest}`);
@@ -56,6 +65,22 @@ export function runDoctor(flags: DoctorFlags): number {
     }
   }
 
+  const declinedCaps = capStates.filter((s) => s.declined);
+  if (declinedCaps.length > 0) {
+    log.plain();
+    log.step('Bausteine');
+    for (const s of declinedCaps) {
+      if (s.stale) {
+        warn(
+          `${s.cap.label}: als '${s.reason}' abgewählt, aber ${s.reason} nicht mehr erkannt — ` +
+            `\`udx adopt ${s.cap.id}\``
+        );
+      } else {
+        log.skip(`${s.cap.label}: abgewählt (${s.reason})`);
+      }
+    }
+  }
+
   log.plain();
   log.step('Registry');
   const bunfig = abs(ctx.cwd, 'bunfig.toml');
@@ -65,7 +90,7 @@ export function runDoctor(flags: DoctorFlags): number {
 
   log.plain();
   log.step('package.json');
-  const plan = computePkgPlan(ctx);
+  const plan = computePkgPlan(ctx, { scripts: declined.scripts, devDeps: declined.devDeps });
   if (plan.scriptsToAdd.length === 0) pass('Scripts vollständig');
   else fail(`fehlende Scripts: ${plan.scriptsToAdd.map((s) => s.name).join(', ')}`);
   if (plan.devDepsToAdd.length === 0) pass('devDeps vollständig');

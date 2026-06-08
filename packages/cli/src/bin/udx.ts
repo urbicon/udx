@@ -1,5 +1,6 @@
 #!/usr/bin/env bun
 import pkg from '../../package.json' with { type: 'json' };
+import { runAdopt, runSkip } from '../commands/capability.ts';
 import { runDoctor } from '../commands/doctor.ts';
 import { type HarnessFlags, runHarness } from '../commands/harness.ts';
 import { c } from '../lib/colors.ts';
@@ -11,13 +12,15 @@ ${c.bold('Verwendung')}
   udx <befehl> [optionen]
 
 ${c.bold('Befehle')}
-  init      Harness in ein Projekt einrichten (Configs, Hooks, Scripts, devDeps)
-  sync      Verwaltete Dateien aktualisieren (Prozessverbesserungen nachziehen)
-  doctor    Read-only: Projekt auf fehlende/abweichende Harness-Teile prüfen
+  init           Harness in ein Projekt einrichten (Configs, Hooks, Scripts, devDeps)
+  sync           Verwaltete Dateien aktualisieren (Prozessverbesserungen nachziehen)
+  doctor         Read-only: Projekt auf fehlende/abweichende Harness-Teile prüfen
+  adopt <id>     Abgewählten Baustein wieder aufnehmen (danach \`udx sync\`)
+  skip <id>      Baustein dauerhaft abwählen (z. B. wenn ein anderer Stack genutzt wird)
 
 ${c.bold('Optionen')}
   -n, --dry-run    nichts schreiben, nur anzeigen
-  -f, --force      auch abweichende managed-Dateien & package.json-Drift überschreiben
+  -f, --force      auch lokal geänderte managed-Dateien & package.json-Drift überschreiben
       --svelte     Svelte-Setup erzwingen (statt Auto-Erkennung)
       --no-svelte  reines TS-Setup erzwingen
       --cwd <pfad> Zielverzeichnis (Default: aktuelles)
@@ -29,14 +32,21 @@ ${c.bold('Beispiele')}
   udx sync --dry-run       ${c.gray('# Vorschau, was ein Update ändern würde')}
   udx sync                 ${c.gray('# Harness-Updates übernehmen')}
   udx doctor               ${c.gray('# Drift prüfen')}
+  udx skip git-hooks       ${c.gray('# lefthook nicht verwalten (eigener Hook-Stack)')}
 `;
 
-function parseFlags(argv: string[]): HarnessFlags {
-  const flags: HarnessFlags = {
+interface CliFlags extends HarnessFlags {
+  /** Nicht-Options-Argumente, z. B. der Baustein-Name bei adopt/skip. */
+  positional: string[];
+}
+
+function parseFlags(argv: string[]): CliFlags {
+  const flags: CliFlags = {
     cwd: process.cwd(),
     dryRun: false,
     force: false,
-    svelte: undefined
+    svelte: undefined,
+    positional: []
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -63,6 +73,7 @@ function parseFlags(argv: string[]): HarnessFlags {
           log.err(`Unbekannte Option: ${a}`);
           process.exit(2);
         }
+        if (a) flags.positional.push(a);
     }
   }
   return flags;
@@ -91,6 +102,16 @@ try {
     case 'doctor': {
       const f = parseFlags(rest);
       code = runDoctor({ cwd: f.cwd, svelte: f.svelte });
+      break;
+    }
+    case 'adopt': {
+      const f = parseFlags(rest);
+      code = runAdopt({ cwd: f.cwd, dryRun: f.dryRun, capability: f.positional[0] });
+      break;
+    }
+    case 'skip': {
+      const f = parseFlags(rest);
+      code = runSkip({ cwd: f.cwd, dryRun: f.dryRun, capability: f.positional[0] });
       break;
     }
     default:

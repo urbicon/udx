@@ -27,12 +27,20 @@ export function applyFiles(
   cwd: string,
   ctx: RenderCtx,
   opts: ApplyOptions,
-  manifest: Manifest
+  manifest: Manifest,
+  declined: ReadonlyMap<string, string> = new Map()
 ): FileResult[] {
   const results: FileResult[] = [];
 
   for (const t of FILE_TEMPLATES) {
     if (t.applies && !t.applies(ctx)) continue;
+
+    // Abgewählte Capability (z. B. lefthook bei vorhandenem husky) → nicht verwalten.
+    const declinedReason = declined.get(t.id);
+    if (declinedReason) {
+      results.push({ dest: t.dest, action: 'skipped', note: `abgewählt (${declinedReason})` });
+      continue;
+    }
 
     const target = abs(cwd, t.dest);
     const content = t.render(ctx);

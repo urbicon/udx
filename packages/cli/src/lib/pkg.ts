@@ -58,18 +58,26 @@ export function canonicalDevDeps(ctx: ProjectContext): Partial<Record<DepName, s
   return out;
 }
 
-export function computePkgPlan(ctx: ProjectContext): PkgPlan {
+/** Bausteine abgewählter Capabilities, die aus dem Plan fallen (Scripts/devDeps). */
+export interface PkgSkip {
+  scripts?: ReadonlySet<string>;
+  devDeps?: ReadonlySet<string>;
+}
+
+export function computePkgPlan(ctx: ProjectContext, skip: PkgSkip = {}): PkgPlan {
   const plan: PkgPlan = { scriptsToAdd: [], scriptsDrift: [], devDepsToAdd: [], devDepsDrift: [] };
   const scripts = ctx.pkg.scripts ?? {};
   const devDeps = ctx.pkg.devDependencies ?? {};
 
   for (const [name, to] of Object.entries(canonicalScripts(ctx))) {
+    if (skip.scripts?.has(name)) continue;
     const current = scripts[name];
     if (current === undefined) plan.scriptsToAdd.push({ name, to });
     else if (current !== to) plan.scriptsDrift.push({ name, to, from: current });
   }
 
   for (const [name, to] of Object.entries(canonicalDevDeps(ctx))) {
+    if (skip.devDeps?.has(name)) continue;
     const current = devDeps[name];
     if (current === undefined) plan.devDepsToAdd.push({ name, to: to as string });
     // `workspace:*` (Monorepo-interne Pakete) gilt als erfüllt — kein Drift.

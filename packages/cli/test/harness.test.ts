@@ -1,8 +1,10 @@
 import { describe, expect, test } from 'bun:test';
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { runAdopt, runSkip } from '../src/commands/capability.ts';
 import { type ApplyOptions, applyFiles, ensureBunfig, URBICON_REGISTRY } from '../src/lib/apply.ts';
+import { CAPABILITIES, declinedSets, resolveCapabilities } from '../src/lib/capabilities.ts';
 import { detectContext, type ProjectContext } from '../src/lib/detect.ts';
 import {
   emptyManifest,
@@ -12,8 +14,9 @@ import {
   readManifest,
   writeManifest
 } from '../src/lib/manifest.ts';
-import { computePkgPlan, mutatePkg } from '../src/lib/pkg.ts';
+import { canonicalDevDeps, canonicalScripts, computePkgPlan, mutatePkg } from '../src/lib/pkg.ts';
 import { VERSIONS } from '../src/lib/versions.ts';
+import { FILE_TEMPLATES } from '../src/templates/index.ts';
 
 function project(pkg: Record<string, unknown>): string {
   const dir = mkdtempSync(join(tmpdir(), 'udx-test-'));
@@ -213,6 +216,151 @@ describe('manifest', () => {
     expect(m.harness).toBe(''); // nicht-string ⇒ Default
     expect(m.declined).toEqual({}); // Array ⇒ verworfen
     expect(m.files).toEqual({ ok: 'abc' }); // nur der String-Eintrag bleibt
+  });
+});
+
+describe('capabilities', () => {
+  test('Tabelle referenziert nur existierende Templates/Scripts/Deps', () => {
+    // Svelte-Kontext, damit auch svelte-spezifische Scripts/Deps abgedeckt sind.
+    const ctx = detectContext(project({ name: 'x', devDependencies: { svelte: '^5' } }));
+    const fileIds = new Set(FILE_TEMPLATES.map((t) => t.id));
+    const scriptNames = new Set(Object.keys(canonicalScripts(ctx)));
+    const depNames = new Set(Object.keys(canonicalDevDeps(ctx)));
+    for (const cap of CAPABILITIES) {
+      for (const f of cap.files) expect(fileIds).toContain(f);
+      for (const s of cap.scripts) expect(scriptNames).toContain(s);
+      for (const d of cap.devDeps) {
+        expect(VERSIONS[d]).toBeDefined();
+        expect(depNames).toContain(d); // muss auch tatsächlich geplant werden
+      }
+    }
+  });
+
+  test('lint-format-Abwahl überspringt svelte-spezifische Lint/Format-Deps', () => {
+    const ctx = detectContext(
+      project({ name: 'x', devDependencies: { svelte: '^5', eslint: '^9' } })
+    );
+    const sets = declinedSets(resolveCapabilities(ctx, emptyManifest()));
+    const plan = computePkgPlan(ctx, { scripts: sets.scripts, devDeps: sets.devDeps });
+    expect(plan.devDepsToAdd.some((d) => d.name === 'svelte-check')).toBe(false);
+    expect(plan.devDepsToAdd.some((d) => d.name === '@biomejs/biome')).toBe(false);
+    // `prettier` bleibt (vom git-hooks-Prettier-Hook geteilt):
+    expect(plan.devDepsToAdd.some((d) => d.name === 'prettier')).toBe(true);
+  });
+
+  test('veralteter Auto-Decline-Grund wird als stale markiert', () => {
+    // husky einst erkannt und persistiert, jetzt aber weg ⇒ stale.
+    const m: Manifest = { ...emptyManifest(), declined: { 'git-hooks': 'husky' } };
+    const st = resolveCapabilities(detectContext(project({ name: 'x' })), m).find(
+      (s) => s.cap.id === 'git-hooks'
+    );
+    expect(st?.stale).toBe(true);
+  });
+
+  test('manuelle Abwahl ist nie stale', () => {
+    const m: Manifest = { ...emptyManifest(), declined: { 'git-hooks': 'manual' } };
+    const st = resolveCapabilities(detectContext(project({ name: 'x' })), m).find(
+      (s) => s.cap.id === 'git-hooks'
+    );
+    expect(st?.stale).toBe(false);
+  });
+
+  test('husky-Projekt wählt git-hooks automatisch ab (fresh)', () => {
+    const ctx = detectContext(project({ name: 'x', devDependencies: { husky: '^9' } }));
+    const st = resolveCapabilities(ctx, emptyManifest()).find((s) => s.cap.id === 'git-hooks');
+    expect(st?.declined).toBe(true);
+    expect(st?.reason).toBe('husky');
+    expect(st?.fresh).toBe(true);
+  });
+
+  test('.husky-Verzeichnis löst Abwahl aus (ohne devDep)', () => {
+    const dir = project({ name: 'x' });
+    mkdirSync(join(dir, '.husky'));
+    const st = resolveCapabilities(detectContext(dir), emptyManifest()).find(
+      (s) => s.cap.id === 'git-hooks'
+    );
+    expect(st?.reason).toBe('husky');
+  });
+
+  test('eslint-Projekt wählt lint-format ab', () => {
+    const ctx = detectContext(project({ name: 'x', devDependencies: { eslint: '^9' } }));
+    const st = resolveCapabilities(ctx, emptyManifest()).find((s) => s.cap.id === 'lint-format');
+    expect(st?.declined).toBe(true);
+    expect(st?.reason).toBe('eslint');
+  });
+
+  test('persistierte Abwahl ist nicht fresh', () => {
+    const ctx = detectContext(project({ name: 'x' }));
+    const m: Manifest = { ...emptyManifest(), declined: { 'git-hooks': 'manual' } };
+    const st = resolveCapabilities(ctx, m).find((s) => s.cap.id === 'git-hooks');
+    expect(st).toMatchObject({ declined: true, reason: 'manual', fresh: false });
+  });
+
+  test('sauberes Projekt wählt nichts ab', () => {
+    const states = resolveCapabilities(detectContext(project({ name: 'x' })), emptyManifest());
+    expect(states.every((s) => !s.declined)).toBe(true);
+  });
+
+  test('declinedSets faltet Dateien/Scripts/devDeps zusammen', () => {
+    const ctx = detectContext(
+      project({ name: 'x', devDependencies: { husky: '^9', eslint: '^9' } })
+    );
+    const sets = declinedSets(resolveCapabilities(ctx, emptyManifest()));
+    expect(sets.files.get('lefthook')).toBe('husky');
+    expect(sets.files.get('biome')).toBe('eslint');
+    expect(sets.scripts.has('prepare')).toBe(true);
+    expect(sets.devDeps.has('@biomejs/biome')).toBe(true);
+  });
+
+  test('abgewählte Capability-Datei wird in applyFiles übersprungen', () => {
+    const dir = project({ name: 'x' });
+    const res = applyFiles(
+      dir,
+      detectContext(dir),
+      INIT,
+      emptyManifest(),
+      new Map([['lefthook', 'husky']])
+    );
+    expect(existsSync(join(dir, 'lefthook.yml'))).toBe(false);
+    const r = res.find((x) => x.dest === 'lefthook.yml');
+    expect(r?.action).toBe('skipped');
+    expect(r?.note).toContain('husky');
+  });
+
+  test('computePkgPlan überspringt abgewählte Scripts/devDeps', () => {
+    const ctx = detectContext(project({ name: 'x' }));
+    const plan = computePkgPlan(ctx, {
+      scripts: new Set(['prepare']),
+      devDeps: new Set(['lefthook'])
+    });
+    expect(plan.scriptsToAdd.some((s) => s.name === 'prepare')).toBe(false);
+    expect(plan.devDepsToAdd.some((d) => d.name === 'lefthook')).toBe(false);
+  });
+});
+
+describe('skip & adopt', () => {
+  test('skip persistiert manuelle Abwahl, adopt nimmt sie zurück', () => {
+    const dir = project({ name: 'x' });
+    expect(runSkip({ cwd: dir, dryRun: false, capability: 'git-hooks' })).toBe(0);
+    expect(readManifest(dir).declined['git-hooks']).toBe('manual');
+    expect(runAdopt({ cwd: dir, dryRun: false, capability: 'git-hooks' })).toBe(0);
+    expect(readManifest(dir).declined['git-hooks']).toBeUndefined();
+  });
+
+  test('unbekannter Baustein → exit 2', () => {
+    const dir = project({ name: 'x' });
+    expect(runSkip({ cwd: dir, dryRun: false, capability: 'unsinn' })).toBe(2);
+  });
+
+  test('fehlender Baustein-Name → exit 2', () => {
+    const dir = project({ name: 'x' });
+    expect(runAdopt({ cwd: dir, dryRun: false, capability: undefined })).toBe(2);
+  });
+
+  test('skip --dry-run schreibt kein Manifest', () => {
+    const dir = project({ name: 'x' });
+    runSkip({ cwd: dir, dryRun: true, capability: 'git-hooks' });
+    expect(existsSync(join(dir, MANIFEST_FILE))).toBe(false);
   });
 });
 
