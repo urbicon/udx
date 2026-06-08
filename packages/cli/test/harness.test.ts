@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runAdd, runAdopt, runSkip } from '../src/commands/capability.ts';
-import { runHarness } from '../src/commands/harness.ts';
+import { installPlan, runHarness } from '../src/commands/harness.ts';
 import { helpText } from '../src/commands/help.ts';
 import { runPin, runUnpin } from '../src/commands/pin.ts';
 import { buildReport, runStatus } from '../src/commands/status.ts';
@@ -61,7 +61,8 @@ const HARNESS_DEFAULTS = {
   svelte: undefined,
   diff: false,
   only: [],
-  interactive: false
+  interactive: false,
+  install: false
 };
 
 /** applyFiles mit frischem Manifest (für Tests, die den Manifest-State nicht selbst stellen). */
@@ -539,6 +540,40 @@ describe('add (Dev-facing = adopt + gezielter sync)', () => {
   test('fehlender Baustein-Name → exit 2', () => {
     const dir = project({ name: 'x' });
     expect(runAdd(addFlags(dir, false, undefined))).toBe(2);
+  });
+});
+
+describe('installPlan (--install Entscheidung)', () => {
+  test('Änderungen + --install → ausführen, nicht anbieten', () => {
+    expect(installPlan({ install: true, dryRun: false }, true)).toEqual({
+      run: true,
+      offer: false
+    });
+  });
+
+  test('Änderungen ohne --install → anbieten, nicht ausführen', () => {
+    expect(installPlan({ install: false, dryRun: false }, true)).toEqual({
+      run: false,
+      offer: true
+    });
+  });
+
+  test('keine installierbaren Änderungen → weder ausführen noch anbieten', () => {
+    expect(installPlan({ install: true, dryRun: false }, false)).toEqual({
+      run: false,
+      offer: false
+    });
+    expect(installPlan({ install: false, dryRun: false }, false)).toEqual({
+      run: false,
+      offer: false
+    });
+  });
+
+  test('Dry-Run führt nie aus und bietet nicht an (auch mit --install + Änderungen)', () => {
+    expect(installPlan({ install: true, dryRun: true }, true)).toEqual({
+      run: false,
+      offer: false
+    });
   });
 });
 

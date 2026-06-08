@@ -27,6 +27,7 @@ ${c.bold('Optionen')}
   -n, --dry-run     nichts schreiben, nur anzeigen
   -f, --force       auch lokal geänderte Dateien & package.json-Drift überschreiben
   -i, --interactive bei Konflikten pro Datei entscheiden (update/skip/diff)
+      --install     nach init/sync/add bei neuen devDeps gleich \`bun install\` ausführen
       --only <ids>  nur diese Bausteine (Baustein- oder Datei-Ids, kommasepariert)
       --diff        bei Drift den Unterschied lokal → Vorgabe anzeigen
       --json        (status) strukturierte Ausgabe für Tooling

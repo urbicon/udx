@@ -30,6 +30,43 @@ export interface HarnessFlags {
   only: string[];
   /** Bei Konflikten pro Datei interaktiv entscheiden (braucht ein TTY). */
   interactive: boolean;
+  /** Nach erfolgreichem Lauf `bun install` ausführen (opt-in; der Footer bietet es sonst an). */
+  install: boolean;
+}
+
+export interface InstallPlan {
+  /** `bun install` tatsächlich ausführen. */
+  run: boolean;
+  /** `--install` im Footer anbieten (Änderungen vorhanden, aber nicht angefordert). */
+  offer: boolean;
+}
+
+/**
+ * Entscheidet rein, ob nach dem Lauf `bun install` läuft oder nur angeboten wird. Nur sinnvoll,
+ * wenn die package.json installierbare Änderungen erhielt (neue/angehobene devDeps oder Scripts);
+ * im Dry-Run passiert nichts.
+ */
+export function installPlan(
+  flags: { install: boolean; dryRun: boolean },
+  pkgChanged: boolean
+): InstallPlan {
+  if (flags.dryRun || !pkgChanged) return { run: false, offer: false };
+  return flags.install ? { run: true, offer: false } : { run: false, offer: true };
+}
+
+/** Führt `bun install` im Projekt aus (Bun-nativ, Ausgabe durchgereicht). Gibt den Erfolg zurück. */
+function installDeps(cwd: string): boolean {
+  log.plain();
+  log.step('bun install');
+  const { success } = Bun.spawnSync(['bun', 'install'], {
+    cwd,
+    stdout: 'inherit',
+    stderr: 'inherit',
+    stdin: 'inherit'
+  });
+  if (success) log.ok('Abhängigkeiten installiert.');
+  else log.err('bun install fehlgeschlagen — bitte manuell ausführen.');
+  return success;
 }
 
 /** Persistiert frische Auto-Abwahlen ins Manifest (globaler Fakt, auch unter `--only`). */
@@ -71,6 +108,7 @@ function ensurePackageJson(cwd: string, dryRun: boolean): void {
   });
 }
 
+/** Patcht package.json; gibt zurück, ob installierbare Änderungen (neue/angehobene Deps oder Scripts) geschrieben wurden. */
 function patchPkg(
   ctx: ProjectContext,
   dryRun: boolean,
@@ -78,7 +116,7 @@ function patchPkg(
   declined: DeclinedSets,
   only: PkgSet | undefined,
   pinned: ReadonlySet<string>
-): void {
+): boolean {
   const plan = computePkgPlan(ctx, {
     skip: { scripts: declined.scripts, devDeps: declined.devDeps },
     pinned,
@@ -94,7 +132,7 @@ function patchPkg(
 
   if (auto === 0 && scriptDrift === 0 && held === 0) {
     log.skip('Scripts & devDeps vollständig');
-    return;
+    return false;
   }
 
   for (const ch of plan.scriptsToAdd) log.info(`${c.green('+ script')} ${ch.name}`);
@@ -112,11 +150,15 @@ function patchPkg(
     else log.warn(`script ${ch.name} weicht ab (bleibt; --force überschreibt)`);
   }
 
-  if (dryRun) return;
+  if (dryRun) return false;
   // Nichts tatsächlich Schreibbares (z. B. nur gehaltene Deps gemeldet) → kein Datei-Roundtrip.
-  if (auto === 0 && !(force && scriptDrift > 0)) return;
+  if (auto === 0 && !(force && scriptDrift > 0)) return false;
   const pkg = readJson<PackageJson>(abs(ctx.cwd, 'package.json'));
-  if (mutatePkg(pkg, plan, force)) writeJson(abs(ctx.cwd, 'package.json'), pkg);
+  const changed = mutatePkg(pkg, plan, force);
+  if (changed) writeJson(abs(ctx.cwd, 'package.json'), pkg);
+  // `bun install` ist nur bei neuen/angehobenen Deps oder neuen Scripts (auto) sinnvoll —
+  // reiner Script-Drift-Force ändert keine Installationsmenge.
+  return changed && auto > 0;
 }
 
 function printFooter(
@@ -124,7 +166,8 @@ function printFooter(
   ctx: ProjectContext,
   flags: HarnessFlags,
   results: FileResult[],
-  declined: DeclinedSets
+  declined: DeclinedSets,
+  install: InstallPlan & { ok: boolean | null }
 ): void {
   const conflicts = results.filter((r) => r.action === 'conflict');
   if (conflicts.length > 0) {
@@ -142,13 +185,19 @@ function printFooter(
     log.info(c.gray('Dry-Run beendet — ohne --dry-run erneut ausführen, um zu schreiben.'));
     return;
   }
+  // `bun install` lief bereits erfolgreich (installDeps hat es gemeldet) → kein weiterer Hinweis nötig.
+  const installed = install.run && install.ok === true;
   if (mode === 'init') {
     const hooks = declined.scripts.has('prepare') ? '' : ' + Git-Hooks via prepare-Script';
     log.title('Nächste Schritte');
     log.info(
       `1. ${c.cyan('export CODEBERG_TOKEN=…')} ${c.gray('(Zugriff auf die @urbicon-Registry)')}`
     );
-    log.info(`2. ${c.cyan('bun install')} ${c.gray(`(Deps${hooks})`)}`);
+    if (installed) log.info(`2. ${c.green('✓')} ${c.gray('Abhängigkeiten installiert')}`);
+    else {
+      const tip = install.offer ? c.gray('  (oder gleich `udx init --install`)') : '';
+      log.info(`2. ${c.cyan('bun install')} ${c.gray(`(Deps${hooks})`)}${tip}`);
+    }
     log.info(`3. Scopes in ${c.cyan('commitlint.config.mjs')} ergänzen`);
     if (ctx.svelte)
       log.info(
@@ -156,7 +205,8 @@ function printFooter(
       );
   } else {
     log.ok('Sync abgeschlossen.');
-    log.info(c.gray('Bei neuen devDeps/Scripts anschließend: bun install'));
+    if (install.offer)
+      log.info(c.gray('Neue devDeps/Scripts — `bun install` (oder gleich `udx sync --install`).'));
   }
 }
 
@@ -314,7 +364,7 @@ export function runHarness(
     reportCapabilities(capStates);
   }
 
-  patchPkg(
+  const pkgChanged = patchPkg(
     ctx,
     flags.dryRun,
     flags.force,
@@ -341,6 +391,11 @@ export function runHarness(
     log.skip(`Manifest ${MANIFEST_FILE} ${flags.dryRun ? 'würde aktualisiert' : 'aktualisiert'}`);
   }
 
-  printFooter(mode, ctx, flags, allResults, declined);
-  return 0;
+  // Opt-in `bun install` (D8): nur bei installierbaren Änderungen, sonst bietet der Footer es an.
+  const ip = installPlan(flags, pkgChanged);
+  const installOk = ip.run ? installDeps(ctx.cwd) : null;
+
+  printFooter(mode, ctx, flags, allResults, declined, { ...ip, ok: installOk });
+  // `bun install` angefordert, aber fehlgeschlagen → der Lauf gilt als nicht voll erfolgreich.
+  return ip.run && installOk === false ? 1 : 0;
 }

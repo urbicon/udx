@@ -27,6 +27,7 @@ function parseFlags(argv: string[]): CliFlags {
     diff: false,
     only: [],
     interactive: false,
+    install: false,
     positional: [],
     json: false
   };
@@ -50,6 +51,9 @@ function parseFlags(argv: string[]): CliFlags {
       case '-i':
       case '--interactive':
         flags.interactive = true;
+        break;
+      case '--install':
+        flags.install = true;
         break;
       case '--only': {
         const v = argv[i + 1];
@@ -134,6 +138,7 @@ try {
         diff: f.diff,
         only: f.only,
         interactive: f.interactive,
+        install: f.install,
         capability: f.positional[0]
       });
       break;
