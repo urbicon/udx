@@ -32,19 +32,19 @@ sieht den Zustand statt ihn zu erfragen, und löst riskante Aktionen nur bewusst
 
 ## Arbeitspakete (jeweils: implementieren → Tests/check/lint → commit → Review-Agent → Befunde beheben)
 
-### WP1 — Downgrade-Fix + Pin-Angleichung  ✅ (umgesetzt, noch zu committen)
+### WP1 — Downgrade-Fix + Pin-Angleichung  ✅ committet + reviewed
 - [x] `satisfiesPin()` in `pkg.ts`: Pin = Baseline, nie Downgrade (semver-bewusst via `Bun.semver`).
 - [x] Drift-Bedingung auf `!satisfiesPin` umgestellt.
 - [x] Pins angeglichen (`@types/node ^25.9.2`, `@commitlint/cli ^21.0.2`, `lefthook ^1.13.6`).
 - [x] Tests: `satisfiesPin`, Drift-Regression, Pin-Lag-Guard.
-- [ ] committen + Review.
+- [x] committen + Review → Befunde behoben (`floorVersion` überspringt Obergrenzen; Protokoll-Specifier wie `npm:`/git generisch als erfüllt).
 
-### WP2 — Phase 0: Catalog als Single Source of Truth (verhaltensgleich)
-- [ ] Root-`package.json`: `workspaces.catalog` (+ `catalogs.svelte`) mit **exakt** den aktuellen Pin-Werten; überlappende eigene devDeps auf `"catalog:"`.
-- [ ] `versions.ts`: Konstanten → Reader (`{...catalog, ...catalogs.svelte}` + `@urbicon/* = SELF`). `DepName` als explizite Namensliste führen (Spread verliert Literaltypen).
-- [ ] Pin-Lag-Guard-Test → **Completeness-Test** (jeder `DepName` hat einen Catalog-Eintrag).
-- [ ] DoD: `VERSIONS` byte-identisch (Snapshot-Test), Suite grün, `udx sync --dry-run` gegen Fixture identischer Plan.
-- [ ] committen + Review.
+### WP2 — Phase 0: Catalog als Single Source of Truth (verhaltensgleich)  ✅ committet + reviewed
+- [x] Root-`package.json`: `workspaces.catalog` (+ `catalogs.svelte`) mit **exakt** den aktuellen Pin-Werten; **alle** udx-Pakete (root, cli, commitlint-config) referenzieren via `"catalog:"`.
+- [x] `versions.ts`: Konstanten → Catalog-Reader; `DepName`/Namensgruppen exportiert, `pkg.ts` nutzt sie (keine Duplikation). Generisches `pick<N>` hält die präzisen Key-Typen.
+- [x] Pin-Lag-Guard-Test → **Mirror- + Completeness-Test** + Dogfooding-Test (alle Pakete referenzieren den Catalog).
+- [x] DoD: `VERSIONS` byte-identisch (Laufzeit verifiziert), Suite grün, `udx sync --dry-run` identischer Plan, dist trägt korrektes `^25.9.2`.
+- [x] committen + Review → Befund (Dogfooding untested) behoben. **npm-Sicherheits-Guard verworfen**: npm spielt keine Rolle, `bun publish` löst `catalog:` auf → `catalog:` bleibt auch in publizierten Runtime-Deps (konsistent). Siehe Memory `bun-only-no-npm`.
 
 ### WP3 — Phase 1: `svelte-fixture`
 - [ ] `packages/svelte-fixture/package.json` (private, `catalog:svelte`) + Mini-`.svelte` + `check`-Script.
