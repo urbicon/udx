@@ -48,6 +48,7 @@ Abgewählte Bausteine sind in `init`/`sync`/`doctor` kein Soll (kein Fehler).
 - `lib/` — `detect` (Svelte-Erkennung), `apply` (Datei-Engine + `bunfig.toml`),
   `manifest` (`.udx.json`: 3-Wege-Hashes + abgewählte Bausteine),
   `capabilities` (declinebare Stack-Bündel + Konflikterkennung),
+  `diff` (zero-dep LCS-Diff für `--diff`),
   `pkg` (package.json-Patch), `versions` (gepinnte Versionen), `fs`/`log`/`colors`
 - `templates/` — Render-Funktionen; komplexe Dateien (`cliff.toml`, `bump.sh`,
   `CLAUDE.md.tpl`) als Text-Assets unter `src/assets/` (Import via

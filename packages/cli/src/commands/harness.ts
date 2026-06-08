@@ -19,6 +19,8 @@ export interface HarnessFlags {
   dryRun: boolean;
   force: boolean;
   svelte: boolean | undefined;
+  /** Bei Drift den Unterschied lokal → Template anzeigen. */
+  diff: boolean;
 }
 
 /**
@@ -149,12 +151,15 @@ export function runHarness(mode: 'init' | 'sync', flags: HarnessFlags): number {
   const results: FileResult[] = applyFiles(
     ctx.cwd,
     ctx,
-    { mode, dryRun: flags.dryRun, force: flags.force },
+    { mode, dryRun: flags.dryRun, force: flags.force, diff: flags.diff },
     manifest,
     declined.files
   );
   results.push(ensureBunfig(ctx.cwd, flags.dryRun));
-  for (const r of results) reportAction(r.action, r.dest, r.note);
+  for (const r of results) {
+    reportAction(r.action, r.dest, r.note);
+    if (r.diff) log.block(r.diff);
+  }
 
   reportCapabilities(capStates, manifest, flags.dryRun);
 

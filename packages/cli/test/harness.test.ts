@@ -6,6 +6,7 @@ import { runAdopt, runSkip } from '../src/commands/capability.ts';
 import { type ApplyOptions, applyFiles, ensureBunfig, URBICON_REGISTRY } from '../src/lib/apply.ts';
 import { CAPABILITIES, declinedSets, resolveCapabilities } from '../src/lib/capabilities.ts';
 import { detectContext, type ProjectContext } from '../src/lib/detect.ts';
+import { formatDiff } from '../src/lib/diff.ts';
 import {
   emptyManifest,
   hashContent,
@@ -456,6 +457,57 @@ describe('ensureBunfig', () => {
     const dir = project({ name: 'x' });
     expect(ensureBunfig(dir, true).action).toBe('would-create');
     expect(existsSync(join(dir, 'bunfig.toml'))).toBe(false);
+  });
+});
+
+describe('formatDiff', () => {
+  test('identische Texte ergeben leeren Diff', () => {
+    expect(formatDiff('a\nb\n', 'a\nb\n')).toBe('');
+  });
+
+  test('zeigt geänderte Zeile mit Kontext und Hunk-Header', () => {
+    const d = formatDiff('a\nb\nc\n', 'a\nB\nc\n', { color: false });
+    expect(d).toContain('- b');
+    expect(d).toContain('+ B');
+    expect(d).toContain('  a'); // Kontextzeile
+    expect(d.split('\n').some((l) => l.startsWith('@@'))).toBe(true);
+  });
+
+  test('reines Hinzufügen / reines Löschen', () => {
+    expect(formatDiff('a\n', 'a\nb\n', { color: false })).toContain('+ b');
+    expect(formatDiff('a\nb\n', 'a\n', { color: false })).toContain('- b');
+  });
+
+  test('color:false enthält keine ANSI-Codes', () => {
+    expect(formatDiff('a\n', 'b\n', { color: false })).not.toContain('[');
+  });
+
+  test('begrenzt Kontext: zwei weit getrennte Änderungen ⇒ zwei Hunks, Mitte unsichtbar', () => {
+    const old = Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n');
+    const neu = old.replace('line 0', 'X0').replace('line 39', 'X39');
+    const d = formatDiff(old, neu, { color: false, context: 2 });
+    expect(d).toContain('X0');
+    expect(d).toContain('X39');
+    expect(d).not.toContain('line 20');
+    expect(d.split('\n').filter((l) => l.startsWith('@@')).length).toBe(2);
+  });
+});
+
+describe('applyFiles --diff', () => {
+  test('liefert Diff bei Konflikt, wenn diff gesetzt', () => {
+    const dir = project({ name: 'x' });
+    writeFileSync(join(dir, 'cliff.toml'), 'FREMD\n');
+    const res = applyFiles(dir, detectContext(dir), { ...SYNC, diff: true }, emptyManifest());
+    const r = res.find((x) => x.dest === 'cliff.toml');
+    expect(r?.action).toBe('conflict');
+    expect(r?.diff).toContain('FREMD');
+  });
+
+  test('ohne diff-Flag kein Diff im Ergebnis', () => {
+    const dir = project({ name: 'x' });
+    writeFileSync(join(dir, 'cliff.toml'), 'FREMD\n');
+    const res = applyFiles(dir, detectContext(dir), SYNC, emptyManifest());
+    expect(res.find((x) => x.dest === 'cliff.toml')?.diff).toBeUndefined();
   });
 });
 

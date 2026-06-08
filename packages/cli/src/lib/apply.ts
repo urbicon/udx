@@ -1,4 +1,5 @@
 import { FILE_TEMPLATES, type RenderCtx } from '../templates/index.ts';
+import { formatDiff } from './diff.ts';
 import { abs, exists, readText, writeText } from './fs.ts';
 import type { FileAction } from './log.ts';
 import { hashContent, type Manifest } from './manifest.ts';
@@ -8,12 +9,16 @@ export interface ApplyOptions {
   dryRun: boolean;
   /** Überschreibt auch managed-Dateien, die lokal verändert wurden. */
   force: boolean;
+  /** Bei managed-Drift den Unterschied (lokal → Template) im FileResult mitliefern. */
+  diff?: boolean;
 }
 
 export interface FileResult {
   dest: string;
   action: FileAction;
   note?: string;
+  /** Gefärbter Diff lokal → Template (nur gesetzt, wenn `opts.diff` und Drift vorliegt). */
+  diff?: string;
 }
 
 /**
@@ -79,22 +84,25 @@ export function applyFiles(
     const pristine = known !== undefined && hashContent(local) === known;
     const allowUpdate = pristine ? opts.mode === 'sync' || opts.force : opts.force;
 
+    let result: FileResult;
     if (!allowUpdate) {
-      results.push(
-        pristine
-          ? { dest: t.dest, action: 'skipped', note: 'veraltet — `udx sync` aktualisiert' }
-          : { dest: t.dest, action: 'conflict', note: 'lokal geändert — `--force` überschreibt' }
-      );
-      continue;
-    }
-
-    if (opts.dryRun) {
-      results.push({ dest: t.dest, action: 'would-update' });
+      result = pristine
+        ? { dest: t.dest, action: 'skipped', note: 'veraltet — `udx sync` aktualisiert' }
+        : { dest: t.dest, action: 'conflict', note: 'lokal geändert — `--force` überschreibt' };
+    } else if (opts.dryRun) {
+      result = { dest: t.dest, action: 'would-update' };
     } else {
       writeText(target, content, t.mode);
       remember();
-      results.push({ dest: t.dest, action: 'updated' });
+      result = { dest: t.dest, action: 'updated' };
     }
+
+    // Diff vor dem (möglichen) Schreiben aus `local` berechnet: zeigt, was sich ändert.
+    if (opts.diff) {
+      const d = formatDiff(local, content, { color: true });
+      if (d) result.diff = d;
+    }
+    results.push(result);
   }
 
   return results;

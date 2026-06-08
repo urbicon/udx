@@ -8,7 +8,15 @@ export const log = {
   warn: (s: string) => console.log(`  ${c.yellow('!')} ${s}`),
   err: (s: string) => console.error(`  ${c.red('✗')} ${s}`),
   skip: (s: string) => console.log(`  ${c.gray('·')} ${c.gray(s)}`),
-  plain: (s = '') => console.log(s)
+  plain: (s = '') => console.log(s),
+  /** Mehrzeiligen Block (z. B. einen Diff) eingerückt ausgeben. */
+  block: (s: string, pad = '    ') =>
+    console.log(
+      s
+        .split('\n')
+        .map((l) => pad + l)
+        .join('\n')
+    )
 };
 
 /** Aktion an einer Datei für die Zusammenfassung. */

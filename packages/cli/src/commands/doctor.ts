@@ -2,6 +2,7 @@ import { URBICON_REGISTRY } from '../lib/apply.ts';
 import { declinedSets, resolveCapabilities } from '../lib/capabilities.ts';
 import { c } from '../lib/colors.ts';
 import { detectContext } from '../lib/detect.ts';
+import { formatDiff } from '../lib/diff.ts';
 import { abs, exists, readText } from '../lib/fs.ts';
 import { log } from '../lib/log.ts';
 import { hashContent, readManifest } from '../lib/manifest.ts';
@@ -11,6 +12,8 @@ import { FILE_TEMPLATES } from '../templates/index.ts';
 export interface DoctorFlags {
   cwd: string;
   svelte: boolean | undefined;
+  /** Bei abweichenden managed-Dateien den Unterschied lokal → Template anzeigen. */
+  diff: boolean;
 }
 
 export function runDoctor(flags: DoctorFlags): number {
@@ -52,7 +55,8 @@ export function runDoctor(flags: DoctorFlags): number {
       continue;
     }
     const local = readText(target);
-    if (local === t.render(ctx)) {
+    const expected = t.render(ctx);
+    if (local === expected) {
       pass(t.dest);
       continue;
     }
@@ -62,6 +66,10 @@ export function runDoctor(flags: DoctorFlags): number {
       warn(`${t.dest} veraltet — \`udx sync\` aktualisiert`);
     } else {
       warn(`${t.dest} lokal geändert — \`udx sync --force\` überschreibt`);
+    }
+    if (flags.diff) {
+      const d = formatDiff(local, expected, { color: true });
+      if (d) log.block(d);
     }
   }
 

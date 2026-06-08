@@ -21,6 +21,7 @@ ${c.bold('Befehle')}
 ${c.bold('Optionen')}
   -n, --dry-run    nichts schreiben, nur anzeigen
   -f, --force      auch lokal geänderte managed-Dateien & package.json-Drift überschreiben
+      --diff       bei Drift den Unterschied lokal → Template anzeigen
       --svelte     Svelte-Setup erzwingen (statt Auto-Erkennung)
       --no-svelte  reines TS-Setup erzwingen
       --cwd <pfad> Zielverzeichnis (Default: aktuelles)
@@ -29,7 +30,7 @@ ${c.bold('Optionen')}
 
 ${c.bold('Beispiele')}
   udx init                 ${c.gray('# neues/bestehendes Projekt einrichten')}
-  udx sync --dry-run       ${c.gray('# Vorschau, was ein Update ändern würde')}
+  udx sync --dry-run --diff ${c.gray('# Vorschau samt Diff, was ein Update ändern würde')}
   udx sync                 ${c.gray('# Harness-Updates übernehmen')}
   udx doctor               ${c.gray('# Drift prüfen')}
   udx skip git-hooks       ${c.gray('# lefthook nicht verwalten (eigener Hook-Stack)')}
@@ -46,6 +47,7 @@ function parseFlags(argv: string[]): CliFlags {
     dryRun: false,
     force: false,
     svelte: undefined,
+    diff: false,
     positional: []
   };
   for (let i = 0; i < argv.length; i++) {
@@ -58,6 +60,9 @@ function parseFlags(argv: string[]): CliFlags {
       case '-f':
       case '--force':
         flags.force = true;
+        break;
+      case '--diff':
+        flags.diff = true;
         break;
       case '--svelte':
         flags.svelte = true;
@@ -101,7 +106,7 @@ try {
       break;
     case 'doctor': {
       const f = parseFlags(rest);
-      code = runDoctor({ cwd: f.cwd, svelte: f.svelte });
+      code = runDoctor({ cwd: f.cwd, svelte: f.svelte, diff: f.diff });
       break;
     }
     case 'adopt': {
