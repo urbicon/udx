@@ -127,14 +127,17 @@ export function runDoctor(flags: DoctorFlags): number {
   log.plain();
   log.step('package.json');
   const plan = computePkgPlan(ctx, {
-    skip: { scripts: declined.scripts, devDeps: declined.devDeps }
+    skip: { scripts: declined.scripts, devDeps: declined.devDeps },
+    pinned: new Set(Object.keys(manifest.pinned))
   });
   if (plan.scriptsToAdd.length === 0) pass('Scripts vollständig');
   else fail(`fehlende Scripts: ${plan.scriptsToAdd.map((s) => s.name).join(', ')}`);
   if (plan.devDepsToAdd.length === 0) pass('devDeps vollständig');
   else fail(`fehlende devDeps: ${plan.devDepsToAdd.map((s) => s.name).join(', ')}`);
   for (const ch of plan.scriptsDrift) warn(`script ${ch.name} weicht ab`);
-  for (const ch of plan.devDepsDrift) warn(`devDep ${ch.name} ${ch.from ?? '?'} ≠ ${ch.to}`);
+  for (const ch of plan.devDepsDrift)
+    warn(`devDep ${ch.name} ${ch.from ?? '?'} → ${ch.to} (sync zieht hoch)`);
+  for (const ch of plan.devDepsPinned) log.skip(`devDep ${ch.name} gehalten bei ${ch.from}`);
 
   log.plain();
   if (fails > 0) {

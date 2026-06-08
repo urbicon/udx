@@ -76,32 +76,39 @@ function patchPkg(
   dryRun: boolean,
   force: boolean,
   declined: DeclinedSets,
-  only: PkgSet | undefined
+  only: PkgSet | undefined,
+  pinned: ReadonlySet<string>
 ): void {
   const plan = computePkgPlan(ctx, {
     skip: { scripts: declined.scripts, devDeps: declined.devDeps },
+    pinned,
     ...(only ? { only } : {})
   });
-  const adds = plan.scriptsToAdd.length + plan.devDepsToAdd.length;
-  const drift = plan.scriptsDrift.length + plan.devDepsDrift.length;
+  // Auto = wird ohne --force angewandt (fehlende ergänzen + sicheres Anheben hinter dem Pin).
+  const auto = plan.scriptsToAdd.length + plan.devDepsToAdd.length + plan.devDepsDrift.length;
+  const scriptDrift = plan.scriptsDrift.length;
+  const held = plan.devDepsPinned.length;
 
   log.plain();
   log.step('package.json');
 
-  if (adds === 0 && drift === 0) {
+  if (auto === 0 && scriptDrift === 0 && held === 0) {
     log.skip('Scripts & devDeps vollständig');
     return;
   }
 
   for (const ch of plan.scriptsToAdd) log.info(`${c.green('+ script')} ${ch.name}`);
   for (const ch of plan.devDepsToAdd) log.info(`${c.green('+ devDep')} ${ch.name}@${ch.to}`);
+  // Versions-Drift wird sicher angehoben (nie Downgrade) — kein --force nötig.
+  for (const ch of plan.devDepsDrift) {
+    log.info(`${c.cyan('↑ devDep')} ${ch.name} ${ch.from} → ${ch.to}`);
+  }
+  for (const ch of plan.devDepsPinned) {
+    log.skip(`devDep ${ch.name} gehalten bei ${ch.from} (lösen: udx unpin ${ch.name})`);
+  }
   for (const ch of plan.scriptsDrift) {
     if (force) log.info(`${c.yellow('~ script')} ${ch.name}`);
     else log.warn(`script ${ch.name} weicht ab (bleibt; --force überschreibt)`);
-  }
-  for (const ch of plan.devDepsDrift) {
-    if (force) log.info(`${c.yellow('~ devDep')} ${ch.name} ${ch.from} → ${ch.to}`);
-    else log.warn(`devDep ${ch.name} ${ch.from ?? '?'} ≠ ${ch.to} (bleibt; --force überschreibt)`);
   }
 
   if (dryRun) return;
@@ -294,7 +301,14 @@ export function runHarness(mode: 'init' | 'sync', flags: HarnessFlags): number {
     reportCapabilities(capStates);
   }
 
-  patchPkg(ctx, flags.dryRun, flags.force, declined, onlyPkg);
+  patchPkg(
+    ctx,
+    flags.dryRun,
+    flags.force,
+    declined,
+    onlyPkg,
+    new Set(Object.keys(manifest.pinned))
+  );
 
   // Interaktiv nur Root-Konflikte: package-scoped Bausteine sind create-only (s. Guard in
   // templates/index.ts) und können daher nicht in Konflikt geraten.

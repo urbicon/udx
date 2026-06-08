@@ -4,6 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runAdopt, runSkip } from '../src/commands/capability.ts';
 import { runHarness } from '../src/commands/harness.ts';
+import { runPin, runUnpin } from '../src/commands/pin.ts';
 import { type ApplyOptions, applyFiles, ensureBunfig, URBICON_REGISTRY } from '../src/lib/apply.ts';
 import {
   CAPABILITIES,
@@ -647,6 +648,76 @@ describe('mutatePkg', () => {
     const ctx = detectContext(project({ name: 'x', scripts: { lint: 'eslint .' } }));
     mutatePkg(ctx.pkg, computePkgPlan(ctx), true);
     expect(ctx.pkg.scripts?.lint).toBe('biome check .');
+  });
+
+  test('Versions-Drift (Projekt hinter Pin) wird ohne force angehoben — Scripts nicht', () => {
+    const ctx = detectContext(
+      project({
+        name: 'x',
+        devDependencies: { '@types/node': '^25.0.0' },
+        scripts: { lint: 'eslint .' }
+      })
+    );
+    mutatePkg(ctx.pkg, computePkgPlan(ctx), false); // KEIN force
+    expect(ctx.pkg.devDependencies?.['@types/node']).toBe(VERSIONS['@types/node']); // angehoben
+    expect(ctx.pkg.scripts?.lint).toBe('eslint .'); // Script-Drift bleibt (force-only)
+  });
+});
+
+describe('pin/unpin & sicheres Anheben', () => {
+  test('gepinnte devDep landet in devDepsPinned, nicht in Drift/Add', () => {
+    const ctx = detectContext(
+      project({ name: 'x', devDependencies: { '@types/node': '^25.0.0' } })
+    );
+    const plan = computePkgPlan(ctx, { pinned: new Set(['@types/node']) });
+    expect(plan.devDepsDrift.some((d) => d.name === '@types/node')).toBe(false);
+    expect(plan.devDepsToAdd.some((d) => d.name === '@types/node')).toBe(false);
+    expect(plan.devDepsPinned.some((d) => d.name === '@types/node')).toBe(true);
+  });
+
+  test('mutatePkg lässt gepinnte devDep selbst mit force unberührt', () => {
+    const ctx = detectContext(
+      project({ name: 'x', devDependencies: { '@types/node': '^25.0.0' } })
+    );
+    mutatePkg(ctx.pkg, computePkgPlan(ctx, { pinned: new Set(['@types/node']) }), true);
+    expect(ctx.pkg.devDependencies?.['@types/node']).toBe('^25.0.0');
+  });
+
+  test('Manifest persistiert pinned roundtrip', () => {
+    const dir = project({ name: 'x' });
+    writeManifest(dir, { ...emptyManifest(), pinned: { '@types/node': '^25.0.0' } }, false);
+    expect(readManifest(dir).pinned).toEqual({ '@types/node': '^25.0.0' });
+  });
+
+  test('pin hält die aktuelle Range, unpin löst', () => {
+    const dir = project({ name: 'x', devDependencies: { '@types/node': '^25.0.0' } });
+    expect(runPin({ cwd: dir, dryRun: false, dep: '@types/node' })).toBe(0);
+    expect(readManifest(dir).pinned['@types/node']).toBe('^25.0.0');
+    expect(runUnpin({ cwd: dir, dryRun: false, dep: '@types/node' })).toBe(0);
+    expect(readManifest(dir).pinned['@types/node']).toBeUndefined();
+  });
+
+  test('pin mit expliziter Range; ohne Range & ohne Installation → exit 2', () => {
+    const dir = project({ name: 'x' });
+    expect(runPin({ cwd: dir, dryRun: false, dep: 'foo', range: '^1.2.3' })).toBe(0);
+    expect(readManifest(dir).pinned.foo).toBe('^1.2.3');
+    expect(runPin({ cwd: dir, dryRun: false, dep: 'bar' })).toBe(2);
+    expect(runPin({ cwd: dir, dryRun: false, dep: undefined })).toBe(2);
+  });
+
+  test('sync zieht hinter dem Pin liegende devDep ohne --force hoch', () => {
+    const dir = project({ name: 'x', devDependencies: { '@types/node': '^25.0.0' } });
+    runHarness('sync', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+    expect(pkg.devDependencies['@types/node']).toBe(VERSIONS['@types/node']);
+  });
+
+  test('gepinnte devDep bleibt bei sync unberührt', () => {
+    const dir = project({ name: 'x', devDependencies: { '@types/node': '^25.0.0' } });
+    runPin({ cwd: dir, dryRun: false, dep: '@types/node' });
+    runHarness('sync', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+    expect(pkg.devDependencies['@types/node']).toBe('^25.0.0');
   });
 });
 

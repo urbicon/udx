@@ -17,10 +17,12 @@ export interface Manifest {
   adopted: string[];
   /** sha256 des zuletzt von udx geschriebenen Inhalts je managed-Datei. */
   files: Record<string, string>;
+  /** Bewusst gehaltene devDeps: Name → Range bei `udx pin`. `sync` lässt sie unberührt (kein Anheben). */
+  pinned: Record<string, string>;
 }
 
 export function emptyManifest(): Manifest {
-  return { harness: '', declined: {}, adopted: [], files: {} };
+  return { harness: '', declined: {}, adopted: [], files: {}, pinned: {} };
 }
 
 export function hashContent(content: string): string {
@@ -37,7 +39,8 @@ export function readManifest(cwd: string): Manifest {
       harness: typeof raw.harness === 'string' ? raw.harness : '',
       declined: cleanStringRecord(raw.declined),
       adopted: Array.isArray(raw.adopted) ? raw.adopted.filter((x) => typeof x === 'string') : [],
-      files: cleanStringRecord(raw.files)
+      files: cleanStringRecord(raw.files),
+      pinned: cleanStringRecord(raw.pinned)
     };
   } catch {
     return emptyManifest();
@@ -51,7 +54,8 @@ function serialize(m: Manifest): string {
       harness: m.harness,
       declined: sortObj(m.declined),
       adopted: [...m.adopted].sort(),
-      files: sortObj(m.files)
+      files: sortObj(m.files),
+      pinned: sortObj(m.pinned)
     },
     null,
     2

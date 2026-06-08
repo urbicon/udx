@@ -12,6 +12,8 @@ export interface PkgPlan {
   scriptsDrift: PkgChange[];
   devDepsToAdd: PkgChange[];
   devDepsDrift: PkgChange[];
+  /** Hinter dem Pin, aber bewusst gehalten (`udx pin`) — wird nicht angehoben, nur zur Sicht gemeldet. */
+  devDepsPinned: PkgChange[];
 }
 
 export function canonicalScripts(ctx: ProjectContext): Record<string, string> {
@@ -78,17 +80,24 @@ export interface PkgSet {
   devDeps?: ReadonlySet<string>;
 }
 
-/** Filter für den Plan: `skip` nimmt Bausteine raus (abgewählt), `only` beschränkt (Whitelist). */
+/** Filter für den Plan: `skip` nimmt Bausteine raus (abgewählt), `only` beschränkt (Whitelist), `pinned` hält devDeps. */
 export interface PkgFilter {
   skip?: PkgSet;
   only?: PkgSet;
+  pinned?: ReadonlySet<string>;
 }
 
 export function computePkgPlan(ctx: ProjectContext, filter: PkgFilter = {}): PkgPlan {
-  const plan: PkgPlan = { scriptsToAdd: [], scriptsDrift: [], devDepsToAdd: [], devDepsDrift: [] };
+  const plan: PkgPlan = {
+    scriptsToAdd: [],
+    scriptsDrift: [],
+    devDepsToAdd: [],
+    devDepsDrift: [],
+    devDepsPinned: []
+  };
   const scripts = ctx.pkg.scripts ?? {};
   const devDeps = ctx.pkg.devDependencies ?? {};
-  const { skip, only } = filter;
+  const { skip, only, pinned } = filter;
 
   for (const [name, to] of Object.entries(canonicalScripts(ctx))) {
     if (only?.scripts && !only.scripts.has(name)) continue;
@@ -102,6 +111,13 @@ export function computePkgPlan(ctx: ProjectContext, filter: PkgFilter = {}): Pkg
     if (only?.devDeps && !only.devDeps.has(name)) continue;
     if (skip?.devDeps?.has(name)) continue;
     const current = devDeps[name];
+    // Bewusst gehalten (`udx pin`) → unberührt lassen, aber zur Sicht melden (nur wenn vorhanden).
+    if (pinned?.has(name)) {
+      if (current !== undefined) {
+        plan.devDepsPinned.push({ name, to: to as string, from: current });
+      }
+      continue;
+    }
     if (current === undefined) plan.devDepsToAdd.push({ name, to: to as string });
     // Drift nur, wenn das Projekt echt hinter dem Pin liegt (nicht bei neuerer kompatibler Version).
     else if (!satisfiesPin(current, to as string)) {
@@ -118,7 +134,12 @@ function sortKeys(obj: Record<string, string>): Record<string, string> {
   return out;
 }
 
-/** Wendet den Plan auf das pkg-Objekt an. `force` aktualisiert auch Drift. Gibt true zurück, wenn geändert. */
+/**
+ * Wendet den Plan auf das pkg-Objekt an. Fehlende Scripts/devDeps und Versions-Drift (Projekt hinter
+ * dem Pin) werden immer angewandt — `satisfiesPin` garantiert, dass das nie ein Downgrade ist, daher
+ * braucht das kein `--force`. Nur Script-Drift kann eine bewusste Anpassung sein → `--force`.
+ * Gibt true zurück, wenn geändert.
+ */
 export function mutatePkg(pkg: PackageJson, plan: PkgPlan, force: boolean): boolean {
   let changed = false;
   const scripts = { ...(pkg.scripts ?? {}) };
@@ -132,13 +153,14 @@ export function mutatePkg(pkg: PackageJson, plan: PkgPlan, force: boolean): bool
     devDeps[ch.name] = ch.to;
     changed = true;
   }
+  // Sicheres Anheben hinter dem Pin liegender Versionen (nie Downgrade) — ohne --force.
+  for (const ch of plan.devDepsDrift) {
+    devDeps[ch.name] = ch.to;
+    changed = true;
+  }
   if (force) {
     for (const ch of plan.scriptsDrift) {
       scripts[ch.name] = ch.to;
-      changed = true;
-    }
-    for (const ch of plan.devDepsDrift) {
-      devDeps[ch.name] = ch.to;
       changed = true;
     }
   }

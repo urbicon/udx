@@ -3,6 +3,7 @@ import pkg from '../../package.json' with { type: 'json' };
 import { runAdopt, runSkip } from '../commands/capability.ts';
 import { runDoctor } from '../commands/doctor.ts';
 import { type HarnessFlags, runHarness } from '../commands/harness.ts';
+import { runPin, runUnpin } from '../commands/pin.ts';
 import { c } from '../lib/colors.ts';
 import { log } from '../lib/log.ts';
 
@@ -17,6 +18,8 @@ ${c.bold('Befehle')}
   doctor         Read-only: Projekt auf fehlende/abweichende Harness-Teile prüfen
   adopt <id>     Abgewählten Baustein wieder aufnehmen (danach \`udx sync\`)
   skip <id>      Baustein dauerhaft abwählen (z. B. wenn ein anderer Stack genutzt wird)
+  pin <dep> [r]  devDep-Version bewusst halten — \`sync\` zieht sie nicht hoch
+  unpin <dep>    Halten wieder aufheben
 
 ${c.bold('Optionen')}
   -n, --dry-run     nichts schreiben, nur anzeigen
@@ -136,6 +139,21 @@ try {
     case 'skip': {
       const f = parseFlags(rest);
       code = runSkip({ cwd: f.cwd, dryRun: f.dryRun, capability: f.positional[0] });
+      break;
+    }
+    case 'pin': {
+      const f = parseFlags(rest);
+      code = runPin({
+        cwd: f.cwd,
+        dryRun: f.dryRun,
+        dep: f.positional[0],
+        ...(f.positional[1] ? { range: f.positional[1] } : {})
+      });
+      break;
+    }
+    case 'unpin': {
+      const f = parseFlags(rest);
+      code = runUnpin({ cwd: f.cwd, dryRun: f.dryRun, dep: f.positional[0] });
       break;
     }
     default:
