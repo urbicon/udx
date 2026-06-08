@@ -16,6 +16,7 @@ import { log, reportAction } from '../lib/log.ts';
 import { MANIFEST_FILE, type Manifest, readManifest, writeManifest } from '../lib/manifest.ts';
 import { computePkgPlan, mutatePkg, type PkgSet } from '../lib/pkg.ts';
 import { CLI_VERSION } from '../lib/versions.ts';
+import { detectWiring, type WiringState, wiringSkipDeps } from '../lib/wiring.ts';
 import { isTypeScriptPackage, resolveWorkspaces } from '../lib/workspace.ts';
 import { FILE_TEMPLATES } from '../templates/index.ts';
 
@@ -105,6 +106,21 @@ function reportCapabilities(states: CapabilityState[]): void {
   );
 }
 
+/** Meldet selbstverwaltete Configs neutral und bietet das Übernehmen der udx-Vorlage an (D9). */
+function reportWiring(wiring: WiringState[]): void {
+  const self = wiring.filter((w) => w.status === 'self-managed');
+  if (self.length === 0) return;
+
+  log.plain();
+  log.step('Verdrahtung');
+  for (const w of self) {
+    log.skip(
+      `${w.consuming}: ${w.dep} nicht verdrahtet — übernehmen mit \`udx sync --only ${w.id} --force\``
+    );
+  }
+  log.info(c.gray('… oder die eigene Config behalten (nichts tun).'));
+}
+
 function ensurePackageJson(cwd: string, dryRun: boolean): void {
   const path = abs(cwd, 'package.json');
   if (exists(path)) return;
@@ -126,10 +142,12 @@ function patchPkg(
   force: boolean,
   declined: DeclinedSets,
   only: PkgSet | undefined,
-  pinned: ReadonlySet<string>
+  pinned: ReadonlySet<string>,
+  /** Selbstverwaltete @urbicon-Preset-Deps (Verdrahtung) — nicht ergänzen. */
+  wiringSkip: ReadonlySet<string>
 ): boolean {
   const plan = computePkgPlan(ctx, {
-    skip: { scripts: declined.scripts, devDeps: declined.devDeps },
+    skip: { scripts: declined.scripts, devDeps: new Set([...declined.devDeps, ...wiringSkip]) },
     pinned,
     ...(only ? { only } : {})
   });
@@ -293,6 +311,8 @@ export function runHarness(
   const manifest = manifestOverride ?? readManifest(ctx.cwd);
   const capStates = resolveCapabilities(ctx, manifest);
   const declined = declinedSets(capStates);
+  const wiring = detectWiring(ctx);
+  const wiringSkip = wiringSkipDeps(wiring);
 
   // --only: Auswahl auf konkrete Bausteine auflösen (null = alle).
   const validFileIds = new Set(FILE_TEMPLATES.map((t) => t.id));
@@ -373,6 +393,7 @@ export function runHarness(
   if (!selection) {
     if (!flags.dryRun) persistDeclines(capStates, manifest);
     reportCapabilities(capStates);
+    reportWiring(wiring);
   }
 
   const pkgChanged = patchPkg(
@@ -381,7 +402,8 @@ export function runHarness(
     flags.force,
     declined,
     onlyPkg,
-    new Set(Object.keys(manifest.pinned))
+    new Set(Object.keys(manifest.pinned)),
+    wiringSkip
   );
 
   // Interaktiv nur Root-Konflikte: package-scoped Bausteine sind create-only (s. Guard in

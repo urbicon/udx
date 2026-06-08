@@ -32,6 +32,7 @@ import {
   satisfiesPin
 } from '../src/lib/pkg.ts';
 import { SVELTE_DEPS, TOOL_DEPS, VERSIONS } from '../src/lib/versions.ts';
+import { detectWiring, wiringSkipDeps } from '../src/lib/wiring.ts';
 import { isTypeScriptPackage, resolveWorkspaces } from '../src/lib/workspace.ts';
 import { FILE_TEMPLATES } from '../src/templates/index.ts';
 
@@ -880,6 +881,130 @@ describe('udx status', () => {
     const dir = project({ name: 'x' });
     expect(runStatus({ cwd: dir, svelte: false, json: false })).toBe(0);
     expect(runStatus({ cwd: dir, svelte: false, json: true })).toBe(0);
+  });
+});
+
+describe('Verdrahtung (wiring)', () => {
+  const statusOf = (dir: string, id: string) =>
+    detectWiring(detectContext(dir)).find((s) => s.id === id)?.status;
+
+  test('absent: ohne konsumierende Config', () => {
+    const dir = project({ name: 'x' });
+    expect(statusOf(dir, 'commitlint')).toBe('absent');
+    expect(statusOf(dir, 'biome')).toBe('absent');
+    expect(statusOf(dir, 'tsconfig')).toBe('absent');
+  });
+
+  test('wired: Config referenziert das @urbicon-Paket', () => {
+    const dir = project({ name: 'x' });
+    writeFileSync(
+      join(dir, 'biome.json'),
+      JSON.stringify({ extends: ['@urbicon/biome-config/biome-base.json'] })
+    );
+    writeFileSync(
+      join(dir, 'commitlint.config.mjs'),
+      "import { createConfig } from '@urbicon/commitlint-config';\n"
+    );
+    writeFileSync(
+      join(dir, 'tsconfig.json'),
+      JSON.stringify({ extends: '@urbicon/tsconfig/base.json' })
+    );
+    expect(statusOf(dir, 'biome')).toBe('wired');
+    expect(statusOf(dir, 'commitlint')).toBe('wired');
+    expect(statusOf(dir, 'tsconfig')).toBe('wired');
+  });
+
+  test('self-managed: Config existiert, referenziert @urbicon aber nicht', () => {
+    const dir = project({ name: 'x' });
+    writeFileSync(join(dir, 'biome.json'), JSON.stringify({ extends: ['./eigene.json'] }));
+    writeFileSync(
+      join(dir, 'commitlint.config.mjs'),
+      "export default { extends: ['@commitlint/config-conventional'] };\n"
+    );
+    expect(statusOf(dir, 'biome')).toBe('self-managed');
+    expect(statusOf(dir, 'commitlint')).toBe('self-managed');
+  });
+
+  test('commitlint findet auch andere Endungen (.js/.cjs/.ts)', () => {
+    const dir = project({ name: 'x' });
+    writeFileSync(join(dir, 'commitlint.config.js'), "module.exports = { extends: ['x'] };\n");
+    expect(statusOf(dir, 'commitlint')).toBe('self-managed');
+  });
+
+  test('tsconfig im Monorepo: wired, wenn ein Paket @urbicon/tsconfig extendet', () => {
+    const dir = monorepo();
+    writeFileSync(
+      join(dir, 'packages/api/tsconfig.json'),
+      JSON.stringify({ extends: '@urbicon/tsconfig/base.json' })
+    );
+    expect(statusOf(dir, 'tsconfig')).toBe('wired');
+  });
+
+  test('tsconfig im Monorepo: self-managed, wenn keine tsconfig @urbicon extendet', () => {
+    const dir = monorepo();
+    writeFileSync(join(dir, 'packages/api/tsconfig.json'), JSON.stringify({ compilerOptions: {} }));
+    expect(statusOf(dir, 'tsconfig')).toBe('self-managed');
+  });
+
+  test('wiringSkipDeps überspringt nur self-managed (nicht absent)', () => {
+    const dir = project({ name: 'x' });
+    writeFileSync(
+      join(dir, 'commitlint.config.mjs'),
+      "export default { extends: ['@commitlint/config-conventional'] };\n"
+    );
+    const skip = wiringSkipDeps(detectWiring(detectContext(dir)));
+    expect(skip.has('@urbicon/commitlint-config')).toBe(true); // self-managed
+    expect(skip.has('@urbicon/biome-config')).toBe(false); // absent ⇒ kein Skip
+  });
+
+  test('Gating: self-managed Config → @urbicon-Dep nicht „fehlt", sondern Verdrahtung-Zeile', () => {
+    const dir = project({ name: 'x' });
+    writeFileSync(
+      join(dir, 'commitlint.config.mjs'),
+      "export default { extends: ['@commitlint/config-conventional'] };\n"
+    );
+    const report = buildReport({ cwd: dir, svelte: false, json: false });
+    const pkgRows = report.sections.find((s) => s.title === 'package.json')?.rows ?? [];
+    expect(pkgRows.some((r) => r.label === '@urbicon/commitlint-config')).toBe(false);
+    const wiringRows = report.sections.find((s) => s.title === 'Verdrahtung')?.rows ?? [];
+    const row = wiringRows.find((r) => r.label === 'commitlint.config.mjs');
+    expect(row?.state).toBe('unwired');
+    expect(row?.cmd).toBe('udx sync --only commitlint --force');
+  });
+});
+
+describe('applyFiles create-only Austausch (--only + --force)', () => {
+  test('--only + --force ersetzt eine vorhandene create-only-Datei durch die Vorlage', () => {
+    const dir = project({ name: 'x' });
+    const ctx = detectContext(dir);
+    writeFileSync(join(dir, 'commitlint.config.mjs'), '// eigene\n');
+    const res = applyFiles(
+      dir,
+      ctx,
+      { ...SYNC, force: true },
+      emptyManifest(),
+      new Map(),
+      new Set(['commitlint'])
+    );
+    expect(readFileSync(join(dir, 'commitlint.config.mjs'), 'utf8')).toContain(
+      '@urbicon/commitlint-config'
+    );
+    expect(res.find((r) => r.id === 'commitlint')?.action).toBe('updated');
+  });
+
+  test('--only ohne --force lässt die create-only-Datei unberührt', () => {
+    const dir = project({ name: 'x' });
+    writeFileSync(join(dir, 'commitlint.config.mjs'), '// eigene\n');
+    applyFiles(dir, detectContext(dir), SYNC, emptyManifest(), new Map(), new Set(['commitlint']));
+    expect(readFileSync(join(dir, 'commitlint.config.mjs'), 'utf8')).toBe('// eigene\n');
+  });
+
+  test('blankes --force (ohne --only) lässt create-only unberührt (Sicherheitsgarantie)', () => {
+    const dir = project({ name: 'x' });
+    const ctx = detectContext(dir);
+    writeFileSync(join(dir, 'commitlint.config.mjs'), '// eigene\n');
+    applyFiles(dir, ctx, { ...SYNC, force: true }, emptyManifest());
+    expect(readFileSync(join(dir, 'commitlint.config.mjs'), 'utf8')).toBe('// eigene\n');
   });
 });
 

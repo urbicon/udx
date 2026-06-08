@@ -7,6 +7,7 @@ import { abs, exists, readText } from '../lib/fs.ts';
 import { log } from '../lib/log.ts';
 import { hashContent, readManifest } from '../lib/manifest.ts';
 import { computePkgPlan } from '../lib/pkg.ts';
+import { detectWiring, wiringSkipDeps } from '../lib/wiring.ts';
 import { isTypeScriptPackage, resolveWorkspaces } from '../lib/workspace.ts';
 import { FILE_TEMPLATES } from '../templates/index.ts';
 
@@ -22,6 +23,8 @@ export function runDoctor(flags: DoctorFlags): number {
   const manifest = readManifest(ctx.cwd);
   const capStates = resolveCapabilities(ctx, manifest);
   const declined = declinedSets(capStates);
+  const wiring = detectWiring(ctx);
+  const wiringSkip = wiringSkipDeps(wiring);
   log.title(`udx doctor — ${ctx.projectName}${ctx.svelte ? c.gray(' (svelte)') : ''}`);
 
   let fails = 0;
@@ -124,10 +127,20 @@ export function runDoctor(flags: DoctorFlags): number {
     pass('bunfig.toml @urbicon-Registry');
   else fail('bunfig.toml @urbicon-Registry fehlt');
 
+  const selfManaged = wiring.filter((w) => w.status === 'self-managed');
+  if (selfManaged.length > 0) {
+    log.plain();
+    log.step('Verdrahtung');
+    for (const w of selfManaged) {
+      // Selbstverwaltete Config ist eine bewusste Wahl, kein Fehler — neutral melden.
+      log.skip(`${w.consuming}: ${w.dep} nicht verdrahtet (udx sync --only ${w.id} --force)`);
+    }
+  }
+
   log.plain();
   log.step('package.json');
   const plan = computePkgPlan(ctx, {
-    skip: { scripts: declined.scripts, devDeps: declined.devDeps },
+    skip: { scripts: declined.scripts, devDeps: new Set([...declined.devDeps, ...wiringSkip]) },
     pinned: new Set(Object.keys(manifest.pinned))
   });
   if (plan.scriptsToAdd.length === 0) pass('Scripts vollständig');

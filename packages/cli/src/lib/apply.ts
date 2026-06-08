@@ -87,9 +87,25 @@ export function applyFiles(
       continue;
     }
 
-    // 3. create-only: vorhandene Datei nie anfassen.
+    // 3. create-only: vorhandene Datei standardmäßig nie anfassen. Ausnahme: ein bewusster, gezielter
+    //    Austausch (`--force` UND explizit per `--only` gewählt) übernimmt die udx-Vorlage — so lässt
+    //    sich z. B. eine selbstverwaltete Config verdrahten. Blankes `--force` lässt create-only unberührt.
     if (t.policy === 'create-only') {
-      results.push({ dest: t.dest, id: t.id, action: 'skipped', note: 'create-only, vorhanden' });
+      if (!(opts.force && only?.has(t.id))) {
+        results.push({ dest: t.dest, id: t.id, action: 'skipped', note: 'create-only, vorhanden' });
+        continue;
+      }
+      let res: FileResult;
+      if (opts.dryRun) res = { dest: t.dest, id: t.id, action: 'would-update' };
+      else {
+        writeText(target, content, t.mode);
+        res = { dest: t.dest, id: t.id, action: 'updated' };
+      }
+      if (opts.diff) {
+        const d = formatDiff(local, content, { color: true });
+        if (d) res.diff = d;
+      }
+      results.push(res);
       continue;
     }
 

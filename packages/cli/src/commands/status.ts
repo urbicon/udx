@@ -6,6 +6,7 @@ import { abs, exists, readText } from '../lib/fs.ts';
 import { log } from '../lib/log.ts';
 import { type Manifest, readManifest } from '../lib/manifest.ts';
 import { canonicalDevDeps, canonicalScripts, computePkgPlan } from '../lib/pkg.ts';
+import { detectWiring, wiringSkipDeps } from '../lib/wiring.ts';
 import { isTypeScriptPackage, resolveWorkspaces } from '../lib/workspace.ts';
 
 export interface StatusFlags {
@@ -16,7 +17,7 @@ export interface StatusFlags {
 }
 
 /** Klassifikation eines verwalteten Dings — bestimmt Glyphe, Farbe und die empfohlene Aktion. */
-type State = 'sync' | 'behind' | 'missing' | 'customized' | 'pinned' | 'declined';
+type State = 'sync' | 'behind' | 'missing' | 'customized' | 'pinned' | 'declined' | 'unwired';
 
 interface Row {
   state: State;
@@ -37,7 +38,8 @@ const GLYPH: Record<State, string> = {
   missing: c.green('+'),
   customized: c.yellow('✎'),
   pinned: c.gray('⊙'),
-  declined: c.gray('⊘')
+  declined: c.gray('⊘'),
+  unwired: c.gray('~')
 };
 
 /** Übersetzt ein applyFiles-Dry-Ergebnis in eine Status-Zeile (declined-Dateien filtert `fileRows` vorab). */
@@ -100,6 +102,12 @@ export function buildReport(flags: StatusFlags): {
   const declined = declinedSets(capStates);
   const pinned = new Set(Object.keys(manifest.pinned));
 
+  // Verdrahtung: selbstverwaltete Configs ⇒ ihr @urbicon-Preset-Dep zählt nicht als Soll
+  // (weder fehlend noch „in sync"), sondern erscheint unten als eigene Zeile.
+  const wiring = detectWiring(ctx);
+  const wiringSkip = wiringSkipDeps(wiring);
+  const skipDeps = new Set([...declined.devDeps, ...wiringSkip]);
+
   const bausteine: Row[] = capStates.map((s) =>
     s.declined
       ? {
@@ -115,7 +123,7 @@ export function buildReport(flags: StatusFlags): {
 
   // package.json: nur das Handlungsrelevante als Zeile, der Rest als „in sync"-Zähler.
   const plan = computePkgPlan(ctx, {
-    skip: { scripts: declined.scripts, devDeps: declined.devDeps },
+    skip: { scripts: declined.scripts, devDeps: skipDeps },
     pinned
   });
   const pkg: Row[] = [];
@@ -150,9 +158,8 @@ export function buildReport(flags: StatusFlags): {
     Object.keys(canonicalScripts(ctx)).filter(
       (n) => !declined.scripts.has(n) && !plannedScripts.has(n)
     ).length +
-    Object.keys(canonicalDevDeps(ctx)).filter(
-      (n) => !declined.devDeps.has(n) && !plannedDeps.has(n)
-    ).length;
+    Object.keys(canonicalDevDeps(ctx)).filter((n) => !skipDeps.has(n) && !plannedDeps.has(n))
+      .length;
   if (inSync > 0)
     pkg.push({ state: 'sync', label: `${inSync} weitere`, detail: 'Scripts & devDeps in sync' });
 
@@ -169,6 +176,16 @@ export function buildReport(flags: StatusFlags): {
         }
   ];
 
+  // Selbstverwaltete Configs aktiv anbieten: übernehmen oder die eigene behalten.
+  const verdrahtung: Row[] = wiring
+    .filter((w) => w.status === 'self-managed')
+    .map((w) => ({
+      state: 'unwired' as const,
+      label: w.consuming,
+      detail: `${w.dep} nicht verdrahtet`,
+      cmd: `udx sync --only ${w.id} --force`
+    }));
+
   return {
     ctx,
     held: plan.devDepsPinned.length,
@@ -176,6 +193,7 @@ export function buildReport(flags: StatusFlags): {
       { title: 'Bausteine', rows: bausteine },
       { title: 'Dateien', rows: dateien },
       { title: 'package.json', rows: pkg },
+      { title: 'Verdrahtung', rows: verdrahtung },
       { title: 'Registry', rows: registry }
     ]
   };
@@ -211,16 +229,18 @@ export function runStatus(flags: StatusFlags): number {
   log.plain();
   log.info(
     c.gray(
-      'Legende  ✓ in sync · ↑ sync zieht hoch · + fehlt · ✎ lokal geändert (force/-i) · ⊙ gehalten · ⊘ Baustein aus'
+      'Legende  ✓ in sync · ↑ sync zieht hoch · + fehlt · ✎ lokal geändert (force/-i) · ⊙ gehalten · ⊘ Baustein aus · ~ eigene Config'
     )
   );
   const all = sections.flatMap((s) => s.rows);
   const raise = all.filter((r) => r.state === 'behind' || r.state === 'missing').length;
   const force = all.filter((r) => r.state === 'customized').length;
+  const unwired = all.filter((r) => r.state === 'unwired').length;
   const parts: string[] = [];
   if (raise > 0) parts.push(`${raise}× ${c.cyan('udx sync')}`);
   if (force > 0) parts.push(`${force}× braucht ${c.yellow('--force/-i')}`);
   if (held > 0) parts.push(`${held}× ${c.gray('gehalten')}`);
+  if (unwired > 0) parts.push(`${unwired}× ${c.gray('eigene Config')}`);
   log.info(parts.length > 0 ? parts.join(' · ') : c.green('alles in sync.'));
   return 0;
 }
