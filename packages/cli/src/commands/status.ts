@@ -4,7 +4,7 @@ import { c } from '../lib/colors.ts';
 import { detectContext, type ProjectContext } from '../lib/detect.ts';
 import { abs, exists, readText } from '../lib/fs.ts';
 import { log } from '../lib/log.ts';
-import { readManifest } from '../lib/manifest.ts';
+import { type Manifest, readManifest } from '../lib/manifest.ts';
 import { canonicalDevDeps, canonicalScripts, computePkgPlan } from '../lib/pkg.ts';
 import { isTypeScriptPackage, resolveWorkspaces } from '../lib/workspace.ts';
 
@@ -40,8 +40,8 @@ const GLYPH: Record<State, string> = {
   declined: c.gray('⊘')
 };
 
-/** Übersetzt ein applyFiles-Dry-Ergebnis in eine Status-Zeile (declined-Dateien → null, stehen unter Bausteine). */
-function fileRow(r: FileResult, prefix = ''): Row | null {
+/** Übersetzt ein applyFiles-Dry-Ergebnis in eine Status-Zeile (declined-Dateien filtert `fileRows` vorab). */
+function fileRow(r: FileResult, prefix = ''): Row {
   const label = `${prefix}${r.dest}`;
   switch (r.action) {
     case 'unchanged':
@@ -55,39 +55,34 @@ function fileRow(r: FileResult, prefix = ''): Row | null {
     case 'conflict':
       return { state: 'customized', label, detail: 'lokal geändert', cmd: 'udx sync -i' };
     default:
-      // 'skipped': abgewählt (→ unter Bausteine) vs. create-only vorhanden (→ als ok zeigen).
-      if (r.note?.startsWith('abgewählt')) return null;
+      // 'skipped' erreicht hier nur create-only-vorhanden — declined-Dateien sind schon raus.
       return { state: 'sync', label, detail: 'vorhanden' };
   }
 }
 
 /** Sammelt alle Dateizeilen (Root + im Monorepo je TS-Paket package-scoped). */
-function fileRows(ctx: ProjectContext, declinedFiles: ReadonlyMap<string, string>): Row[] {
+function fileRows(
+  ctx: ProjectContext,
+  declinedFiles: ReadonlyMap<string, string>,
+  manifest: Manifest
+): Row[] {
   const dry: ApplyOptions = { mode: 'sync', dryRun: true, force: false };
   const workspaces = resolveWorkspaces(ctx.cwd, ctx.pkg);
   const isMonorepo = workspaces.length > 0;
   const rows: Row[] = [];
 
+  // Declined-Dateien über ihre id rausfiltern (statt am Hinweistext) — sie stehen unter Bausteine.
   const rootOpts = isMonorepo ? { ...dry, scope: 'root' as const } : dry;
-  for (const r of applyFiles(ctx.cwd, ctx, rootOpts, readManifest(ctx.cwd), declinedFiles)) {
-    const row = fileRow(r);
-    if (row) rows.push(row);
+  for (const r of applyFiles(ctx.cwd, ctx, rootOpts, manifest, declinedFiles)) {
+    if (r.id && declinedFiles.has(r.id)) continue;
+    rows.push(fileRow(r));
   }
   if (isMonorepo) {
     for (const ws of workspaces) {
       const pkgCtx = detectContext(abs(ctx.cwd, ws), ctx.svelte);
       if (!isTypeScriptPackage(pkgCtx.cwd, pkgCtx.pkg)) continue;
-      const res = applyFiles(
-        pkgCtx.cwd,
-        pkgCtx,
-        { ...dry, scope: 'package' },
-        readManifest(ctx.cwd),
-        new Map()
-      );
-      for (const r of res) {
-        const row = fileRow(r, `${ws}/`);
-        if (row) rows.push(row);
-      }
+      const res = applyFiles(pkgCtx.cwd, pkgCtx, { ...dry, scope: 'package' }, manifest, new Map());
+      for (const r of res) rows.push(fileRow(r, `${ws}/`));
     }
   }
   return rows;
@@ -116,7 +111,7 @@ export function buildReport(flags: StatusFlags): {
       : { state: 'sync' as const, label: s.cap.label, detail: 'aktiv' }
   );
 
-  const dateien = fileRows(ctx, declined.files);
+  const dateien = fileRows(ctx, declined.files, manifest);
 
   // package.json: nur das Handlungsrelevante als Zeile, der Rest als „in sync"-Zähler.
   const plan = computePkgPlan(ctx, {
@@ -145,17 +140,19 @@ export function buildReport(flags: StatusFlags): {
       cmd: `udx unpin ${ch.name}`
     });
 
-  const totalCanon =
-    Object.keys(canonicalScripts(ctx)).length -
-    declined.scripts.size +
-    (Object.keys(canonicalDevDeps(ctx)).length - declined.devDeps.size);
-  const actionable =
-    plan.scriptsToAdd.length +
-    plan.scriptsDrift.length +
-    plan.devDepsToAdd.length +
-    plan.devDepsDrift.length +
-    plan.devDepsPinned.length;
-  const inSync = Math.max(0, totalCanon - actionable);
+  // „In sync" = kanonische Scripts/devDeps (ohne abgewählte), die in KEINER Plan-Liste stehen —
+  // direkt gezählt statt arithmetisch, damit kein künftiges Capability-Dep ohne canonical-Pendant still falsch zählt.
+  const plannedScripts = new Set([...plan.scriptsToAdd, ...plan.scriptsDrift].map((ch) => ch.name));
+  const plannedDeps = new Set(
+    [...plan.devDepsToAdd, ...plan.devDepsDrift, ...plan.devDepsPinned].map((ch) => ch.name)
+  );
+  const inSync =
+    Object.keys(canonicalScripts(ctx)).filter(
+      (n) => !declined.scripts.has(n) && !plannedScripts.has(n)
+    ).length +
+    Object.keys(canonicalDevDeps(ctx)).filter(
+      (n) => !declined.devDeps.has(n) && !plannedDeps.has(n)
+    ).length;
   if (inSync > 0)
     pkg.push({ state: 'sync', label: `${inSync} weitere`, detail: 'Scripts & devDeps in sync' });
 

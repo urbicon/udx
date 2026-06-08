@@ -129,7 +129,12 @@ if (cmd === '--help' || cmd === '-h' || cmd === 'help') {
 if (cmd === undefined) {
   // Bare `udx` in einem Projekt → status (Discoverability); außerhalb eines Projekts → Hilfe.
   if (exists(abs(process.cwd(), 'package.json'))) {
-    process.exit(runStatus({ cwd: process.cwd(), svelte: undefined, json: false }));
+    try {
+      process.exit(runStatus({ cwd: process.cwd(), svelte: undefined, json: false }));
+    } catch (err) {
+      log.err(err instanceof Error ? err.message : String(err));
+      process.exit(1);
+    }
   }
   console.log(HELP);
   process.exit(0);
