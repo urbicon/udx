@@ -83,6 +83,20 @@ sieht den Zustand statt ihn zu erfragen, und löst riskante Aktionen nur bewusst
 - [x] `--install` (init/sync/add) → `bun install` nach erfolgreichem Lauf, aber nur bei installierbaren Änderungen (reine `installPlan`); ohne Flag bietet der Footer es gezielt an (nicht mehr pauschal). `patchPkg` meldet `pkgChanged`; `installDeps` via `Bun.spawnSync`.
 - [x] committen + Review (2 Agenten) → Befunde behoben: spawn-throw (bun nicht im $PATH) abgefangen; Fehlermeldung ehrlich (prepare-Fehlschlag ≠ Dep-Fehlschlag). Exit 1 nur bei angefordertem + fehlgeschlagenem Install.
 
+## Nachträge (buny-Praxisfeedback)
+
+### Biome × Svelte  ✅ committet
+- [x] Generierte `biome.json` schließt `.svelte` **immer** aus (nicht nur bei erkanntem Svelte) — sonst lässt der nicht-svelte Monorepo-Root Biome in `.svelte`-Sub-Pakete laufen (false positives/fixes). Svelte bleibt bei Prettier (Format) + svelte-check (Typen/a11y); Biome nur TS/JS/JSON. Optionaler ESLint-Svelte-Baustein zurückgestellt (Opt-in-Kür).
+
+### WP9 — Verdrahtungs-Bewusstsein für @urbicon-Config-Pakete  ✅ committet + reviewed
+> Problem (buny): create-only-Configs, die schon existieren (`tsconfig.root.json` self-contained, `commitlint.config.mjs` nutzt `config-conventional` direkt), werden nicht verdrahtet — aber `@urbicon/tsconfig`/`commitlint-config` trotzdem als devDep ergänzt ⇒ tote Last. Dep und Nutzung entkoppelt.
+- [x] `lib/wiring.ts`: erkennt je @urbicon-Config-Paket (`biome-config`/`commitlint-config`/`tsconfig`), ob die konsumierende Config es referenziert → `wired` / `self-managed` / `absent` (tsconfig scant Root + Workspace-Pakete; robustes String-Match wegen jsonc/.mjs; Aggregat: ein verdrahteter Kandidat genügt).
+- [x] **Dep-Gating:** `self-managed` ⇒ das @urbicon-Dep wird **nicht** ergänzt (nur das Preset-Dep, nicht das Tool-Dep wie `@biomejs/biome`). Selbstheilend, kein Manifest-State — folgt der echten Config; nach dem Verdrahten ergänzt der nächste `sync` das Dep.
+- [x] **Aktiv melden** in `status` (Sektion „Verdrahtung", `~`-Glyphe), `doctor` (skip, kein fail), `sync`-Footer: „eigene <config> — @urbicon/<pkg> nicht verdrahtet". Wahl: übernehmen mit `udx sync --only <id> --force` · eigene behalten (nichts tun).
+- [x] **Entscheidung A:** kein Capability/`add`/`remove` dafür — das Dep folgt der *tatsächlichen Verdrahtung* (Config-Inhalt), orthogonal zum adopt/decline-Manifest.
+- [x] **Entscheidung B (Semantik-Erweiterung):** `applyFiles` überschreibt eine create-only-Datei **nur** bei `--force` **und** explizitem `--only <id>`. Blankes `udx sync --force` lässt create-only unberührt.
+- [x] Tests + committen + Review (2 Agenten) → Befund behoben: `udx add <cap> --force` ist additiv (kein create-only-Overwrite; bewusstes Ersetzen nur via `sync --only --force`).
+
 ### Defer / v2
 - [ ] D9: Catalog-aware Consumer-Writes (`catalog:` + fremden Catalog pflegen) — eigener Plan.
 - [ ] Docs/CLAUDE.md final über alle WPs konsolidieren (`docs-review`).
