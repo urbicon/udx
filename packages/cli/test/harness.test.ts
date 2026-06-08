@@ -846,6 +846,26 @@ describe('Versionierung', () => {
     for (const n of SVELTE_DEPS) expect(ws.catalogs.svelte[n]).toBeDefined();
   });
 
+  test('udx-Pakete referenzieren catalog-Deps via catalog: (dogfooding, alle Pakete & Dep-Typen)', () => {
+    // udx nutzt seinen eigenen Catalog konsequent: kein literaler Pin für eine Dep, die im Catalog
+    // steht — sonst zöge `bun outdated`/ein Stack-Update sie nicht mehr mit (stiller Pin-Lag).
+    const rootDir = join(import.meta.dir, '..', '..', '..');
+    const rootPkg = JSON.parse(readFileSync(join(rootDir, 'package.json'), 'utf8'));
+    const ws = rootPkg.workspaces;
+    const catalogNames = new Set([...Object.keys(ws.catalog), ...Object.keys(ws.catalogs.svelte)]);
+    const offenders: string[] = [];
+    for (const d of ['.', ...resolveWorkspaces(rootDir, rootPkg)]) {
+      const pkg = JSON.parse(readFileSync(join(rootDir, d, 'package.json'), 'utf8'));
+      const deps = { ...pkg.dependencies, ...pkg.devDependencies };
+      for (const [name, range] of Object.entries(deps)) {
+        if (catalogNames.has(name) && !String(range).startsWith('catalog:')) {
+          offenders.push(`${d}/${name}=${range}`);
+        }
+      }
+    }
+    expect(offenders).toEqual([]);
+  });
+
   test('alle Workspace-Pakete tragen dieselbe Version', () => {
     const root = join(import.meta.dir, '..', '..');
     const versions = ['cli', 'biome-config', 'commitlint-config', 'tsconfig'].map(
