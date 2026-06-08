@@ -53,7 +53,7 @@ function reportCapabilities(states: CapabilityState[]): void {
     log.skip(`${s.cap.label}: ${detail}`);
   }
   log.info(
-    c.gray('Aktivieren mit `udx adopt <id>` (z. B. git-hooks), abwählen mit `udx skip <id>`.')
+    c.gray('Aktivieren mit `udx add <id>` (z. B. git-hooks), abwählen mit `udx remove <id>`.')
   );
 }
 
@@ -216,10 +216,20 @@ function runInteractive(
   }
 }
 
-export function runHarness(mode: 'init' | 'sync', flags: HarnessFlags): number {
+/**
+ * `manifestOverride` lässt einen Aufrufer ein bereits im Speicher mutiertes Manifest durchreichen
+ * (statt es frisch von der Platte zu lesen). `udx add` nutzt das: die Aufnahme eines Bausteins liegt
+ * dann auch im Dry-Run vor, sonst übersprünge ein gezielter `sync --only` einen auto-abgewählten
+ * Baustein. Das Manifest wird am Ende wie gewohnt persistiert (außer im Dry-Run).
+ */
+export function runHarness(
+  mode: 'init' | 'sync',
+  flags: HarnessFlags,
+  manifestOverride?: Manifest
+): number {
   ensurePackageJson(flags.cwd, flags.dryRun);
   const ctx = detectContext(flags.cwd, flags.svelte);
-  const manifest = readManifest(ctx.cwd);
+  const manifest = manifestOverride ?? readManifest(ctx.cwd);
   const capStates = resolveCapabilities(ctx, manifest);
   const declined = declinedSets(capStates);
 

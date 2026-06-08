@@ -2,10 +2,15 @@ import { CAPABILITIES, findCapability } from '../lib/capabilities.ts';
 import { c } from '../lib/colors.ts';
 import { log } from '../lib/log.ts';
 import { readManifest, writeManifest } from '../lib/manifest.ts';
+import { type HarnessFlags, runHarness } from './harness.ts';
 
 export interface CapabilityFlags {
   cwd: string;
   dryRun: boolean;
+  capability: string | undefined;
+}
+
+export interface AddFlags extends HarnessFlags {
   capability: string | undefined;
 }
 
@@ -45,7 +50,7 @@ export function runSkip(flags: CapabilityFlags): number {
   manifest.declined[cap.id] = 'manual';
   writeManifest(flags.cwd, manifest, flags.dryRun);
   log.ok(`${cap.label} abgewählt${flags.dryRun ? ' (Dry-Run)' : ''}.`);
-  log.info(c.gray(`Vorhandene Dateien bleiben. Rückgängig: \`udx adopt ${cap.id}\``));
+  log.info(c.gray(`Vorhandene Dateien bleiben. Rückgängig: \`udx add ${cap.id}\``));
   return 0;
 }
 
@@ -70,4 +75,27 @@ export function runAdopt(flags: CapabilityFlags): number {
   log.ok(`${cap.label} aufgenommen${flags.dryRun ? ' (Dry-Run)' : ''}.`);
   log.info(c.gray(`Einrichten mit \`udx sync --only ${cap.id}\`.`));
   return 0;
+}
+
+/**
+ * Dev-facing „add" (D6): nimmt einen Baustein auf — überstimmt dabei eine Auto-Abwahl
+ * (z. B. lefthook trotz husky) — und richtet ihn in einem Schritt ein. Entspricht `adopt`
+ * gefolgt von `sync --only <id>`. Das in-memory aufgenommene Manifest wird an den sync
+ * durchgereicht, damit auch ein `--dry-run` die Aufnahme korrekt vorzeigt (sonst würde der
+ * gezielte sync den abgewählten Baustein überspringen) und am Ende einmal persistiert wird.
+ */
+export function runAdd(flags: AddFlags): number {
+  const cap = resolve(flags, 'add');
+  if (!cap) return 2;
+
+  const manifest = readManifest(flags.cwd);
+  const wasDeclined = manifest.declined[cap.id] !== undefined;
+  const wasAdopted = manifest.adopted.includes(cap.id);
+  delete manifest.declined[cap.id];
+  if (!wasAdopted) manifest.adopted.push(cap.id);
+
+  const note = wasAdopted && !wasDeclined ? 'bereits aktiv' : 'aufgenommen';
+  log.ok(`${cap.label} ${note}${flags.dryRun ? ' (Dry-Run)' : ''} — wird eingerichtet.`);
+
+  return runHarness('sync', { ...flags, only: [cap.id] }, manifest);
 }

@@ -106,7 +106,7 @@ export function buildReport(flags: StatusFlags): {
           state: 'declined' as const,
           label: s.cap.label,
           detail: `abgewählt (${s.reason})`,
-          cmd: `udx adopt ${s.cap.id}`
+          cmd: `udx add ${s.cap.id}`
         }
       : { state: 'sync' as const, label: s.cap.label, detail: 'aktiv' }
   );

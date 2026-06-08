@@ -2,8 +2,9 @@ import { describe, expect, test } from 'bun:test';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { runAdopt, runSkip } from '../src/commands/capability.ts';
+import { runAdd, runAdopt, runSkip } from '../src/commands/capability.ts';
 import { runHarness } from '../src/commands/harness.ts';
+import { helpText } from '../src/commands/help.ts';
 import { runPin, runUnpin } from '../src/commands/pin.ts';
 import { buildReport, runStatus } from '../src/commands/status.ts';
 import { type ApplyOptions, applyFiles, ensureBunfig, URBICON_REGISTRY } from '../src/lib/apply.ts';
@@ -75,6 +76,10 @@ function apply(
 
 const INIT: ApplyOptions = { mode: 'init', dryRun: false, force: false };
 const SYNC: ApplyOptions = { mode: 'sync', dryRun: false, force: false };
+
+/** ANSI-Escapes entfernen, damit der Hilfe-Snapshot unabhängig von TTY/NO_COLOR stabil ist. */
+const stripAnsi = (s: string): string =>
+  s.replace(new RegExp(`${String.fromCharCode(27)}\\[\\d+m`, 'g'), '');
 
 describe('detectContext', () => {
   test('erkennt Svelte über devDependencies', () => {
@@ -488,6 +493,55 @@ describe('skip & adopt', () => {
   });
 });
 
+describe('add (Dev-facing = adopt + gezielter sync)', () => {
+  const addFlags = (cwd: string, dryRun: boolean, capability: string | undefined) => ({
+    ...HARNESS_DEFAULTS,
+    cwd,
+    dryRun,
+    capability
+  });
+
+  test('richtet einen Baustein direkt ein (Datei + Script + devDep), chirurgisch', () => {
+    const dir = project({ name: 'x' });
+    expect(runAdd(addFlags(dir, false, 'git-hooks'))).toBe(0);
+    expect(existsSync(join(dir, 'lefthook.yml'))).toBe(true);
+    const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+    expect(pkg.scripts?.prepare).toBe('lefthook install');
+    expect(pkg.devDependencies?.lefthook).toBeDefined();
+    // nur dieser Baustein — andere bleiben unberührt:
+    expect(existsSync(join(dir, 'biome.json'))).toBe(false);
+    expect(pkg.scripts?.bump).toBeUndefined();
+    expect(readManifest(dir).adopted).toContain('git-hooks');
+  });
+
+  test('überstimmt die Auto-Abwahl (lefthook trotz husky) und richtet ein', () => {
+    const dir = project({ name: 'x', devDependencies: { husky: '^9' } });
+    expect(runAdd(addFlags(dir, false, 'git-hooks'))).toBe(0);
+    expect(existsSync(join(dir, 'lefthook.yml'))).toBe(true);
+    const m = readManifest(dir);
+    expect(m.adopted).toContain('git-hooks');
+    expect(m.declined['git-hooks']).toBeUndefined();
+  });
+
+  test('dry-run schreibt nichts — weder Datei noch Manifest', () => {
+    const dir = project({ name: 'x', devDependencies: { husky: '^9' } });
+    expect(runAdd(addFlags(dir, true, 'git-hooks'))).toBe(0);
+    expect(existsSync(join(dir, 'lefthook.yml'))).toBe(false);
+    expect(existsSync(join(dir, MANIFEST_FILE))).toBe(false);
+  });
+
+  test('unbekannter Baustein → exit 2, nichts geschrieben', () => {
+    const dir = project({ name: 'x' });
+    expect(runAdd(addFlags(dir, false, 'unsinn'))).toBe(2);
+    expect(existsSync(join(dir, MANIFEST_FILE))).toBe(false);
+  });
+
+  test('fehlender Baustein-Name → exit 2', () => {
+    const dir = project({ name: 'x' });
+    expect(runAdd(addFlags(dir, false, undefined))).toBe(2);
+  });
+});
+
 describe('runHarness Orchestrierung', () => {
   test('persistiert frische Auto-Abwahl ins Manifest (ohne --only)', () => {
     const dir = project({ name: 'x', devDependencies: { husky: '^9' } });
@@ -535,6 +589,23 @@ describe('runHarness Orchestrierung', () => {
     expect(code).toBe(0);
     expect(existsSync(join(dir, 'packages/api/tsconfig.json'))).toBe(false);
     expect(existsSync(join(dir, 'cliff.toml'))).toBe(false);
+  });
+
+  test('--only auf auto-abgewähltem Baustein bleibt ohne Aufnahme übersprungen', () => {
+    // husky ⇒ git-hooks wird auto-abgewählt; ein gezielter sync allein richtet es NICHT ein.
+    const dir = project({ name: 'x', devDependencies: { husky: '^9' } });
+    runHarness('sync', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false, only: ['git-hooks'] });
+    expect(existsSync(join(dir, 'lefthook.yml'))).toBe(false);
+  });
+
+  test('manifestOverride hebt die Auto-Abwahl im sync auf (Fundament von runAdd)', () => {
+    // Das ist genau der Pfad, über den `udx add` die Aufnahme auch im Dry-Run sichtbar macht.
+    const dir = project({ name: 'x', devDependencies: { husky: '^9' } });
+    const m: Manifest = { ...emptyManifest(), adopted: ['git-hooks'] };
+    runHarness('sync', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false, only: ['git-hooks'] }, m);
+    expect(existsSync(join(dir, 'lefthook.yml'))).toBe(true);
+    // die Aufnahme wird vom sync persistiert:
+    expect(readManifest(dir).adopted).toContain('git-hooks');
   });
 });
 
@@ -749,10 +820,11 @@ describe('udx status', () => {
     expect(row?.cmd).toBe('udx sync');
   });
 
-  test('husky-Projekt → git-hooks declined-Zeile mit adopt-Befehl', () => {
+  test('husky-Projekt → git-hooks declined-Zeile mit add-Befehl', () => {
     const dir = project({ name: 'x', devDependencies: { husky: '^9' } });
     const row = rowsOf(dir, 'Bausteine').find((r) => r.cmd?.includes('git-hooks'));
     expect(row?.state).toBe('declined');
+    expect(row?.cmd).toBe('udx add git-hooks');
   });
 
   test('gepinnte devDep → state pinned mit unpin-Befehl', () => {
@@ -992,5 +1064,28 @@ describe('Versionierung', () => {
       (p) => JSON.parse(readFileSync(join(root, p, 'package.json'), 'utf8')).version
     );
     expect(new Set(versions).size).toBe(1);
+  });
+});
+
+describe('Hilfe (--help)', () => {
+  // Versionsneutral (fester Platzhalter) + ANSI-frei ⇒ stabil über Bumps und TTY-Modi.
+  const help = stripAnsi(helpText('1.2.3'));
+
+  test('Snapshot der vollständigen Hilfe', () => {
+    expect(help).toMatchSnapshot();
+  });
+
+  test('führt die Dev-facing Verben als Befehle', () => {
+    for (const cmd of ['init', 'status', 'sync', 'add <id>', 'remove <id>', 'pin', 'unpin']) {
+      expect(help).toContain(cmd);
+    }
+  });
+
+  test('adopt/skip/doctor erscheinen nur als Aliase, nicht in der Befehlstabelle', () => {
+    const befehle = help.slice(help.indexOf('Befehle'), help.indexOf('Optionen'));
+    for (const legacy of ['adopt', 'skip', 'doctor']) expect(befehle).not.toContain(legacy);
+    // …aber in der Aliase-Fußnote schon:
+    expect(help).toContain('Aliase');
+    for (const legacy of ['adopt', 'skip', 'doctor']) expect(help).toContain(legacy);
   });
 });

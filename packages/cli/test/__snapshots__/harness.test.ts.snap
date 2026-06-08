@@ -1,0 +1,40 @@
+// Bun Snapshot v1, https://bun.sh/docs/test/snapshots
+
+exports[`Hilfe (--help) Snapshot der vollständigen Hilfe 1`] = `
+"udx — urbicon-Entwicklungs-Harness  v1.2.3
+
+Verwendung
+  udx <befehl> [optionen]
+
+Befehle
+  init           Harness in ein Projekt einrichten (Configs, Hooks, Scripts, devDeps)
+  status         Ist-Zustand: was ist da, was würde ein sync ändern und wie (Default ohne Befehl)
+  sync           Verwaltete Dateien & devDeps aktualisieren (Verbesserungen nachziehen)
+  add <id>       Baustein aufnehmen und direkt einrichten (z. B. git-hooks, lint-format)
+  remove <id>    Baustein nicht mehr verwalten (vorhandene Dateien bleiben)
+  pin <dep> [r]  devDep-Version bewusst halten — \`sync\` zieht sie nicht hoch
+  unpin <dep>    Halten wieder aufheben
+
+Optionen
+  -n, --dry-run     nichts schreiben, nur anzeigen
+  -f, --force       auch lokal geänderte Dateien & package.json-Drift überschreiben
+  -i, --interactive bei Konflikten pro Datei entscheiden (update/skip/diff)
+      --only <ids>  nur diese Bausteine (Baustein- oder Datei-Ids, kommasepariert)
+      --diff        bei Drift den Unterschied lokal → Vorgabe anzeigen
+      --json        (status) strukturierte Ausgabe für Tooling
+      --svelte      Svelte-Setup erzwingen (statt Auto-Erkennung)
+      --no-svelte   reines TS-Setup erzwingen
+      --cwd <pfad>  Zielverzeichnis (Default: aktuelles)
+  -h, --help        diese Hilfe
+  -V, --version     Version
+
+Beispiele
+  udx                       # Status: was ist da, was würde ein sync ändern
+  udx init                  # neues/bestehendes Projekt einrichten
+  udx sync --dry-run --diff # Vorschau samt Diff, was ein Update ändern würde
+  udx add git-hooks         # lefthook aufnehmen und einrichten
+  udx remove git-hooks      # lefthook nicht mehr verwalten (eigener Hook-Stack)
+
+Aliase  doctor — status mit Exit-Code für CI · adopt/skip — nur auf-/abwählen (add richtet zusätzlich ein)
+"
+`;

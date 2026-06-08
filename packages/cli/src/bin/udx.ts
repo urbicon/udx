@@ -1,53 +1,18 @@
 #!/usr/bin/env bun
 import pkg from '../../package.json' with { type: 'json' };
-import { runAdopt, runSkip } from '../commands/capability.ts';
+import { runAdd, runAdopt, runSkip } from '../commands/capability.ts';
 import { runDoctor } from '../commands/doctor.ts';
 import { type HarnessFlags, runHarness } from '../commands/harness.ts';
+import { helpText } from '../commands/help.ts';
 import { runPin, runUnpin } from '../commands/pin.ts';
 import { runStatus } from '../commands/status.ts';
-import { c } from '../lib/colors.ts';
 import { abs, exists } from '../lib/fs.ts';
 import { log } from '../lib/log.ts';
 
-const HELP = `${c.bold('udx')} — urbicon-Entwicklungs-Harness  ${c.gray(`v${pkg.version}`)}
-
-${c.bold('Verwendung')}
-  udx <befehl> [optionen]
-
-${c.bold('Befehle')}
-  init           Harness in ein Projekt einrichten (Configs, Hooks, Scripts, devDeps)
-  sync           Verwaltete Dateien aktualisieren (Prozessverbesserungen nachziehen)
-  status         Read-only: Ist-Zustand, was ein sync ändern würde und wie (Default ohne Befehl)
-  doctor         Read-only für CI: Projekt auf fehlende/abweichende Harness-Teile prüfen (Exit-Code)
-  adopt <id>     Abgewählten Baustein wieder aufnehmen (danach \`udx sync\`)
-  skip <id>      Baustein dauerhaft abwählen (z. B. wenn ein anderer Stack genutzt wird)
-  pin <dep> [r]  devDep-Version bewusst halten — \`sync\` zieht sie nicht hoch
-  unpin <dep>    Halten wieder aufheben
-
-${c.bold('Optionen')}
-  -n, --dry-run     nichts schreiben, nur anzeigen
-  -f, --force       auch lokal geänderte managed-Dateien & package.json-Drift überschreiben
-  -i, --interactive bei Konflikten pro Datei entscheiden (update/skip/diff)
-      --only <ids>  nur diese Bausteine (Capability- oder Datei-Ids, kommasepariert)
-      --diff        bei Drift den Unterschied lokal → Template anzeigen
-      --json        (status) strukturierte Ausgabe für Tooling
-      --svelte      Svelte-Setup erzwingen (statt Auto-Erkennung)
-      --no-svelte   reines TS-Setup erzwingen
-      --cwd <pfad>  Zielverzeichnis (Default: aktuelles)
-  -h, --help        diese Hilfe
-  -V, --version     Version
-
-${c.bold('Beispiele')}
-  udx init                  ${c.gray('# neues/bestehendes Projekt einrichten')}
-  udx sync --dry-run --diff ${c.gray('# Vorschau samt Diff, was ein Update ändern würde')}
-  udx sync --interactive    ${c.gray('# Konflikte einzeln entscheiden')}
-  udx adopt git-hooks && udx sync --only git-hooks ${c.gray('# nur diesen Baustein migrieren')}
-  udx doctor                ${c.gray('# Drift prüfen')}
-  udx skip git-hooks        ${c.gray('# lefthook nicht verwalten (eigener Hook-Stack)')}
-`;
+const HELP = helpText(pkg.version);
 
 interface CliFlags extends HarnessFlags {
-  /** Nicht-Options-Argumente, z. B. der Baustein-Name bei adopt/skip. */
+  /** Nicht-Options-Argumente, z. B. der Baustein-Name bei add/remove oder die Dep bei pin. */
   positional: string[];
   /** `--json` (von `status` genutzt). */
   json: boolean;
@@ -159,14 +124,31 @@ try {
       code = runStatus({ cwd: f.cwd, svelte: f.svelte, json: f.json });
       break;
     }
-    case 'adopt': {
+    case 'add': {
       const f = parseFlags(rest);
-      code = runAdopt({ cwd: f.cwd, dryRun: f.dryRun, capability: f.positional[0] });
+      code = runAdd({
+        cwd: f.cwd,
+        dryRun: f.dryRun,
+        force: f.force,
+        svelte: f.svelte,
+        diff: f.diff,
+        only: f.only,
+        interactive: f.interactive,
+        capability: f.positional[0]
+      });
       break;
     }
+    // `remove` ist der Dev-facing Name; `skip` bleibt als Back-Compat-Alias (gleiches Verhalten).
+    case 'remove':
     case 'skip': {
       const f = parseFlags(rest);
       code = runSkip({ cwd: f.cwd, dryRun: f.dryRun, capability: f.positional[0] });
+      break;
+    }
+    // Back-Compat-Primitive: nur aufnehmen (ohne Einrichten); `udx add` tut beides.
+    case 'adopt': {
+      const f = parseFlags(rest);
+      code = runAdopt({ cwd: f.cwd, dryRun: f.dryRun, capability: f.positional[0] });
       break;
     }
     case 'pin': {

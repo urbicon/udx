@@ -109,7 +109,7 @@ export function runDoctor(flags: DoctorFlags): number {
       if (s.stale) {
         warn(
           `${s.cap.label}: als '${s.reason}' abgewählt, aber ${s.reason} nicht mehr erkannt — ` +
-            `\`udx adopt ${s.cap.id}\``
+            `\`udx add ${s.cap.id}\``
         );
       } else {
         log.skip(`${s.cap.label}: abgewählt (${s.reason})`);
