@@ -79,9 +79,9 @@ sieht den Zustand statt ihn zu erfragen, und löst riskante Aktionen nur bewusst
 - [x] `renovate.json`: Catalog-Support verifiziert → Renovate kennt Bun-Catalogs **nicht nativ** (nur pnpm/yarn), daher Regex-`customManager` (RE2-tauglich; `renovate-config-validator`-geprüft, Extraktion gegen package.json verifiziert). `rangeStrategy: bump`, deps-scope, `@urbicon/*` ausgenommen. CLAUDE.md: Versions-Quelle (Catalog) + Bump-Workflow dokumentiert.
 - [x] committen + Review (2 Agenten) → Befunde behoben: Renovate-customManager (native Lücke), kein Teil-Write bei Fehlern, robustere `splitRange`.
 
-### WP8 — D8: `udx sync --install` (klein)
-- [ ] `--install`-Flag → `bun install` nach erfolgreichem sync; Footer bietet es an.
-- [ ] committen + Review.
+### WP8 — D8: `udx sync --install` (klein)  ✅ committet + reviewed
+- [x] `--install` (init/sync/add) → `bun install` nach erfolgreichem Lauf, aber nur bei installierbaren Änderungen (reine `installPlan`); ohne Flag bietet der Footer es gezielt an (nicht mehr pauschal). `patchPkg` meldet `pkgChanged`; `installDeps` via `Bun.spawnSync`.
+- [x] committen + Review (2 Agenten) → Befunde behoben: spawn-throw (bun nicht im $PATH) abgefangen; Fehlermeldung ehrlich (prepare-Fehlschlag ≠ Dep-Fehlschlag). Exit 1 nur bei angefordertem + fehlgeschlagenem Install.
 
 ### Defer / v2
 - [ ] D9: Catalog-aware Consumer-Writes (`catalog:` + fremden Catalog pflegen) — eigener Plan.
