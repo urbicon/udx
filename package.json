@@ -2,7 +2,7 @@
   "name": "@urbicon/udx-workspace",
   "description": "Geteiltes Entwicklungs-Harness für Bun/Svelte-Projekte (Configs, CLI, Claude-Plugin)",
   "private": true,
-  "version": "0.1.3",
+  "version": "0.1.4",
   "type": "module",
   "author": "Felix Urban",
   "license": "MIT",
