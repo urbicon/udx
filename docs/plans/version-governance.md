@@ -73,10 +73,11 @@ sieht den Zustand statt ihn zu erfragen, und löst riskante Aktionen nur bewusst
 - [x] Tests: runAdd (einrichten, husky-Override, Dry-Run, exit 2), manifestOverride-Treue; versionsneutraler ANSI-freier Hilfe-Snapshot.
 - [x] committen + Review (zwei Agenten: Konventionen/Korrektheit + Bug-/Logik-Hunt) → keine Befunde ≥ Schwelle; Manifest-Persistenz, Dry-Run-Treue, Back-Compat & Snapshot bestätigt.
 
-### WP7 — D2: `stack:update`-Script + Renovate
-- [ ] `scripts/stack-update.ts`: Registry-`fetch` je Catalog-Eintrag, `--minor`/`--major`-Gate, schreibt Catalog. (`bun outdated -r` bleibt menschliche Sicht.)
-- [ ] `renovate.json` (Catalog-Support verifizieren) + Doku im CLAUDE.md (Bump-Workflow).
-- [ ] committen + Review.
+### WP7 — D2: `stack:update`-Script + Renovate  ✅ committet + reviewed
+- [x] `scripts/stack-update.ts` (+ Root-`stack:update`): Registry-`fetch` je Catalog-Eintrag, Gate patch(default)/`--minor`/`--major` (numerisch gedeckelt, nie Downgrade), operator-erhaltendes Schreiben, `--dry-run`. Schreibt bei Teil-Fehlern gar nicht (kein inkonsistenter Zustand). `bun outdated -r` bleibt menschliche Sicht.
+- [x] **Caveat verifiziert** (WP3): `bun outdated -r` zeigt named-Catalogs (`catalogs.svelte`) nicht — empirisch bestätigt, rechtfertigt das Script.
+- [x] `renovate.json`: Catalog-Support verifiziert → Renovate kennt Bun-Catalogs **nicht nativ** (nur pnpm/yarn), daher Regex-`customManager` (RE2-tauglich; `renovate-config-validator`-geprüft, Extraktion gegen package.json verifiziert). `rangeStrategy: bump`, deps-scope, `@urbicon/*` ausgenommen. CLAUDE.md: Versions-Quelle (Catalog) + Bump-Workflow dokumentiert.
+- [x] committen + Review (2 Agenten) → Befunde behoben: Renovate-customManager (native Lücke), kein Teil-Write bei Fehlern, robustere `splitRange`.
 
 ### WP8 — D8: `udx sync --install` (klein)
 - [ ] `--install`-Flag → `bun install` nach erfolgreichem sync; Footer bietet es an.
