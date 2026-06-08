@@ -17,6 +17,7 @@ export type FileAction =
   | 'updated'
   | 'unchanged'
   | 'skipped'
+  | 'conflict'
   | 'would-create'
   | 'would-update';
 
@@ -28,6 +29,9 @@ export function reportAction(action: FileAction, dest: string, note?: string): v
       break;
     case 'updated':
       log.ok(`${c.yellow('aktualisiert')} ${dest}${suffix}`);
+      break;
+    case 'conflict':
+      log.warn(`${c.yellow('Konflikt')}     ${dest}${suffix}`);
       break;
     case 'would-create':
       log.info(`${c.green('+ erstellen')}    ${dest}${suffix}`);

@@ -3,6 +3,7 @@ import { c } from '../lib/colors.ts';
 import { detectContext } from '../lib/detect.ts';
 import { abs, exists, readText } from '../lib/fs.ts';
 import { log } from '../lib/log.ts';
+import { hashContent, readManifest } from '../lib/manifest.ts';
 import { computePkgPlan } from '../lib/pkg.ts';
 import { FILE_TEMPLATES } from '../templates/index.ts';
 
@@ -13,6 +14,7 @@ export interface DoctorFlags {
 
 export function runDoctor(flags: DoctorFlags): number {
   const ctx = detectContext(flags.cwd, flags.svelte);
+  const manifest = readManifest(ctx.cwd);
   log.title(`udx doctor — ${ctx.projectName}${ctx.svelte ? c.gray(' (svelte)') : ''}`);
 
   let fails = 0;
@@ -36,8 +38,22 @@ export function runDoctor(flags: DoctorFlags): number {
       fail(`fehlt: ${t.dest}`);
       continue;
     }
-    if (t.policy === 'managed' && readText(target) !== t.render(ctx)) warn(`${t.dest} weicht ab`);
-    else pass(t.dest);
+    if (t.policy !== 'managed') {
+      pass(t.dest);
+      continue;
+    }
+    const local = readText(target);
+    if (local === t.render(ctx)) {
+      pass(t.dest);
+      continue;
+    }
+    // managed + Drift: unberührt-veraltet vs. lokal geändert (3-Wege via Manifest).
+    const known = manifest.files[t.dest];
+    if (known !== undefined && hashContent(local) === known) {
+      warn(`${t.dest} veraltet — \`udx sync\` aktualisiert`);
+    } else {
+      warn(`${t.dest} lokal geändert — \`udx sync --force\` überschreibt`);
+    }
   }
 
   log.plain();

@@ -1,11 +1,12 @@
 import { FILE_TEMPLATES, type RenderCtx } from '../templates/index.ts';
 import { abs, exists, readText, writeText } from './fs.ts';
 import type { FileAction } from './log.ts';
+import { hashContent, type Manifest } from './manifest.ts';
 
 export interface ApplyOptions {
   mode: 'init' | 'sync';
   dryRun: boolean;
-  /** Überschreibt auch managed-Dateien, die im init-Modus bereits abweichen. */
+  /** Überschreibt auch managed-Dateien, die lokal verändert wurden. */
   force: boolean;
 }
 
@@ -15,7 +16,19 @@ export interface FileResult {
   note?: string;
 }
 
-export function applyFiles(cwd: string, ctx: RenderCtx, opts: ApplyOptions): FileResult[] {
+/**
+ * Wendet die FILE_TEMPLATES auf das Projekt an. Für managed-Dateien gilt 3-Wege-Drift:
+ * weicht eine vorhandene Datei vom Template ab, entscheidet der im `manifest` gemerkte
+ * Hash des zuletzt von udx geschriebenen Inhalts, ob sie unberührt-veraltet ist
+ * (→ sicher aktualisieren) oder lokal verändert (→ schützen, nur `--force` überschreibt).
+ * Schreibt managed-Hashes idempotent ins `manifest` (vom Caller persistiert).
+ */
+export function applyFiles(
+  cwd: string,
+  ctx: RenderCtx,
+  opts: ApplyOptions,
+  manifest: Manifest
+): FileResult[] {
   const results: FileResult[] = [];
 
   for (const t of FILE_TEMPLATES) {
@@ -23,39 +36,55 @@ export function applyFiles(cwd: string, ctx: RenderCtx, opts: ApplyOptions): Fil
 
     const target = abs(cwd, t.dest);
     const content = t.render(ctx);
+    const remember = () => {
+      if (t.policy === 'managed' && !opts.dryRun) manifest.files[t.dest] = hashContent(content);
+    };
 
+    // 1. Datei fehlt → anlegen.
     if (!exists(target)) {
       if (opts.dryRun) results.push({ dest: t.dest, action: 'would-create' });
       else {
         writeText(target, content, t.mode);
+        remember();
         results.push({ dest: t.dest, action: 'created' });
       }
       continue;
     }
 
-    if (readText(target) === content) {
+    const local = readText(target);
+
+    // 2. Bereits aktuell — Hash nachtragen (deckt Erstmigration ohne Manifest ab).
+    if (local === content) {
+      remember();
       results.push({ dest: t.dest, action: 'unchanged' });
       continue;
     }
 
+    // 3. create-only: vorhandene Datei nie anfassen.
     if (t.policy === 'create-only') {
       results.push({ dest: t.dest, action: 'skipped', note: 'create-only, vorhanden' });
       continue;
     }
 
-    // managed + weicht ab
-    const shouldWrite = opts.mode === 'sync' || opts.force;
-    if (!shouldWrite) {
-      results.push({
-        dest: t.dest,
-        action: 'skipped',
-        note: 'weicht ab — mit `udx sync` aktualisieren'
-      });
+    // 4. managed + weicht ab → 3-Wege-Entscheidung anhand des gemerkten Hashes.
+    const known = manifest.files[t.dest];
+    const pristine = known !== undefined && hashContent(local) === known;
+    const allowUpdate = pristine ? opts.mode === 'sync' || opts.force : opts.force;
+
+    if (!allowUpdate) {
+      results.push(
+        pristine
+          ? { dest: t.dest, action: 'skipped', note: 'veraltet — `udx sync` aktualisiert' }
+          : { dest: t.dest, action: 'conflict', note: 'lokal geändert — `--force` überschreibt' }
+      );
       continue;
     }
-    if (opts.dryRun) results.push({ dest: t.dest, action: 'would-update' });
-    else {
+
+    if (opts.dryRun) {
+      results.push({ dest: t.dest, action: 'would-update' });
+    } else {
       writeText(target, content, t.mode);
+      remember();
       results.push({ dest: t.dest, action: 'updated' });
     }
   }

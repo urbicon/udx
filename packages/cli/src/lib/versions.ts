@@ -6,6 +6,9 @@ import cliPkg from '../../package.json' with { type: 'json' };
  * ableiten statt hartcodieren: ein Release zieht die Consumer-Pins automatisch nach
  * (vorausgesetzt ein frischer Build, den prepublishOnly garantiert).
  */
+/** Version dieser CLI — Quelle für das `harness`-Feld im Projekt-Manifest. */
+export const CLI_VERSION = cliPkg.version;
+
 const SELF = `^${cliPkg.version}`;
 
 /** Gepinnte Versionen, die `udx init`/`udx sync` in Consumer-Projekte schreiben. */

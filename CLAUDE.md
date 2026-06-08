@@ -26,7 +26,8 @@ extendet `@urbicon/biome-config` usw.).
 2. **Müssen physisch existieren** (`cliff.toml`, `lefthook.yml`, `scripts/bump.sh`,
    `bunfig.toml`) → von der CLI geschrieben. Datei-Policies in
    `packages/cli/src/templates/index.ts`:
-   - **managed** → `udx sync` überschreibt bei Drift (Verbesserungen fließen zurück)
+   - **managed** → 3-Wege-Sync via `.udx.json`-Hashes: unberührt-veraltete Dateien zieht
+     `udx sync` nach, lokal geänderte schützt es als Konflikt (`--force` überschreibt)
    - **create-only** → nur angelegt, wenn fehlend (Projekt-Anpassungen bleiben)
 
 ### CLI-Aufbau (`packages/cli/src`)
@@ -35,6 +36,7 @@ extendet `@urbicon/biome-config` usw.).
 - `commands/harness.ts` — geteilte `init`/`sync`-Logik
 - `commands/doctor.ts` — read-only Drift-Check
 - `lib/` — `detect` (Svelte-Erkennung), `apply` (Datei-Engine + `bunfig.toml`),
+  `manifest` (`.udx.json`: 3-Wege-Hashes + abgewählte Bausteine),
   `pkg` (package.json-Patch), `versions` (gepinnte Versionen), `fs`/`log`/`colors`
 - `templates/` — Render-Funktionen; komplexe Dateien (`cliff.toml`, `bump.sh`,
   `CLAUDE.md.tpl`) als Text-Assets unter `src/assets/` (Import via

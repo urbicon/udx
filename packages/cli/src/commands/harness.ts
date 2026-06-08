@@ -4,7 +4,9 @@ import { c } from '../lib/colors.ts';
 import { detectContext, type PackageJson, type ProjectContext } from '../lib/detect.ts';
 import { abs, exists, readJson, writeJson } from '../lib/fs.ts';
 import { log, reportAction } from '../lib/log.ts';
+import { MANIFEST_FILE, readManifest, writeManifest } from '../lib/manifest.ts';
 import { computePkgPlan, mutatePkg } from '../lib/pkg.ts';
+import { CLI_VERSION } from '../lib/versions.ts';
 
 export interface HarnessFlags {
   cwd: string;
@@ -56,7 +58,23 @@ function patchPkg(ctx: ProjectContext, dryRun: boolean, force: boolean): void {
   if (mutatePkg(pkg, plan, force)) writeJson(abs(ctx.cwd, 'package.json'), pkg);
 }
 
-function printFooter(mode: 'init' | 'sync', ctx: ProjectContext, flags: HarnessFlags): void {
+function printFooter(
+  mode: 'init' | 'sync',
+  ctx: ProjectContext,
+  flags: HarnessFlags,
+  results: FileResult[]
+): void {
+  const conflicts = results.filter((r) => r.action === 'conflict');
+  if (conflicts.length > 0) {
+    log.plain();
+    log.warn(
+      `${conflicts.length} lokal geänderte Datei(en) geschützt: ${conflicts
+        .map((r) => r.dest)
+        .join(', ')}`
+    );
+    log.info(c.gray('Übernehmen mit `--force`.'));
+  }
+
   log.plain();
   if (flags.dryRun) {
     log.info(c.gray('Dry-Run beendet — ohne --dry-run erneut ausführen, um zu schreiben.'));
@@ -82,6 +100,7 @@ function printFooter(mode: 'init' | 'sync', ctx: ProjectContext, flags: HarnessF
 export function runHarness(mode: 'init' | 'sync', flags: HarnessFlags): number {
   ensurePackageJson(flags.cwd, flags.dryRun);
   const ctx = detectContext(flags.cwd, flags.svelte);
+  const manifest = readManifest(ctx.cwd);
 
   const label = mode === 'init' ? 'udx init' : 'udx sync';
   log.title(`${label} — ${ctx.projectName}${ctx.svelte ? c.gray(' (svelte)') : ''}`);
@@ -89,15 +108,23 @@ export function runHarness(mode: 'init' | 'sync', flags: HarnessFlags): number {
 
   log.plain();
   log.step('Dateien');
-  const results: FileResult[] = applyFiles(ctx.cwd, ctx, {
-    mode,
-    dryRun: flags.dryRun,
-    force: flags.force
-  });
+  const results: FileResult[] = applyFiles(
+    ctx.cwd,
+    ctx,
+    { mode, dryRun: flags.dryRun, force: flags.force },
+    manifest
+  );
   results.push(ensureBunfig(ctx.cwd, flags.dryRun));
   for (const r of results) reportAction(r.action, r.dest, r.note);
 
   patchPkg(ctx, flags.dryRun, flags.force);
-  printFooter(mode, ctx, flags);
+
+  manifest.harness = CLI_VERSION;
+  if (writeManifest(ctx.cwd, manifest, flags.dryRun)) {
+    log.plain();
+    log.skip(`Manifest ${MANIFEST_FILE} ${flags.dryRun ? 'würde aktualisiert' : 'aktualisiert'}`);
+  }
+
+  printFooter(mode, ctx, flags, results);
   return 0;
 }
