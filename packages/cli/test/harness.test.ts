@@ -548,6 +548,22 @@ describe('add (Dev-facing = adopt + gezielter sync)', () => {
     const dir = project({ name: 'x' });
     expect(runAdd(addFlags(dir, false, undefined))).toBe(2);
   });
+
+  test('add --force überschreibt eine vorhandene create-only-Config NICHT (additiv)', () => {
+    // eslint ⇒ lint-format auto-abgewählt; add nimmt es auf, lässt aber die eigene biome.json.
+    const dir = project({ name: 'x', devDependencies: { eslint: '^9' } });
+    writeFileSync(join(dir, 'biome.json'), '{"custom":true}');
+    expect(
+      runAdd({
+        ...HARNESS_DEFAULTS,
+        cwd: dir,
+        dryRun: false,
+        force: true,
+        capability: 'lint-format'
+      })
+    ).toBe(0);
+    expect(readFileSync(join(dir, 'biome.json'), 'utf8')).toBe('{"custom":true}');
+  });
 });
 
 describe('installPlan (--install Entscheidung)', () => {

@@ -65,6 +65,10 @@ const CONFIGS: ConfigDef[] = [
  * Prüft die Kandidaten: referenziert irgendeiner `dep` → `wired`; existiert mindestens einer ohne
  * Referenz → `self-managed`; keiner vorhanden → `absent`. Robustes String-Match, da jsonc (Kommentare)
  * und `.mjs` nicht sicher als JSON parsebar sind.
+ *
+ * Aggregat: schon EIN verdrahteter Kandidat ergibt `wired` (z. B. im Monorepo, wo ein Paket das Preset
+ * extendet, der Root-tsconfig aber selbstverwaltet ist). Bewusst so — die Frage hier ist „wird das Dep
+ * irgendwo genutzt?". Strenger („alle müssen verdrahten") würde ein berechtigtes Dep fälschlich droppen.
  */
 function scan(paths: string[], dep: string): WiringStatus {
   let present = false;

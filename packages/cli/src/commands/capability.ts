@@ -97,5 +97,7 @@ export function runAdd(flags: AddFlags): number {
   const note = wasAdopted && !wasDeclined ? 'bereits aktiv' : 'aufgenommen';
   log.ok(`${cap.label} ${note}${flags.dryRun ? ' (Dry-Run)' : ''} — wird eingerichtet.`);
 
-  return runHarness('sync', { ...flags, only: [cap.id] }, manifest);
+  // `add` ist additiv: fehlende Dateien/Deps anlegen, aber NIE vorhandene überschreiben (auch nicht
+  // mit `--force`). Bewusstes Ersetzen einer Config läuft explizit über `udx sync --only <id> --force`.
+  return runHarness('sync', { ...flags, only: [cap.id], force: false }, manifest);
 }
