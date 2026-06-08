@@ -91,7 +91,11 @@ export function runDoctor(flags: DoctorFlags): number {
       for (const t of FILE_TEMPLATES) {
         if ((t.scope ?? 'root') !== 'package') continue;
         if (t.applies && !t.applies(pkgCtx)) continue;
-        if (exists(abs(pkgCtx.cwd, t.dest))) pass(`${ws}/${t.dest}`);
+        // Konsistent zur Root-Schleife: abgewählte Capability ⇒ kein Soll (defensiv —
+        // aktuell referenziert keine Capability einen package-scoped Baustein).
+        const reason = declined.files.get(t.id);
+        if (reason) log.skip(`${ws}/${t.dest} abgewählt (${reason})`);
+        else if (exists(abs(pkgCtx.cwd, t.dest))) pass(`${ws}/${t.dest}`);
         else fail(`fehlt: ${ws}/${t.dest}`);
       }
     }

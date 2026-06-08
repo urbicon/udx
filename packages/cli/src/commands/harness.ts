@@ -286,9 +286,13 @@ export function runHarness(mode: 'init' | 'sync', flags: HarnessFlags): number {
   if (selection && allResults.length === 0)
     log.warn('--only: keine passende Datei angewandt (ggf. greift die applies-Bedingung nicht).');
 
-  // Frische Auto-Abwahlen immer merken; anzeigen aber nur ohne --only (chirurgischer Fokus).
-  if (!flags.dryRun) persistDeclines(capStates, manifest);
-  if (!selection) reportCapabilities(capStates);
+  // Auto-Abwahlen nur ohne --only behandeln: --only ist chirurgisch (fasst nur die genannten
+  // Bausteine an); die Abwahl ist deterministisch und wird vom nächsten vollen `sync` persistiert.
+  // So entsteht keine stille Manifest-Mutation, die der unterdrückte Report nicht erklären würde.
+  if (!selection) {
+    if (!flags.dryRun) persistDeclines(capStates, manifest);
+    reportCapabilities(capStates);
+  }
 
   patchPkg(ctx, flags.dryRun, flags.force, declined, onlyPkg);
 

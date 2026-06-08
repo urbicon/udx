@@ -158,6 +158,8 @@ describe('3-Wege-Drift (managed)', () => {
     const forced = applyFiles(dir, ctx, { ...SYNC, force: true }, m);
     expect(readFileSync(join(dir, 'cliff.toml'), 'utf8')).not.toBe('EDITED\n');
     expect(forced.find((r) => r.dest === 'cliff.toml')?.action).toBe('updated');
+    // Hash rückt auf den geschriebenen Stand vor ⇒ der nächste sync sieht keinen Konflikt.
+    expect(m.files['cliff.toml']).toBe(hashContent(readFileSync(join(dir, 'cliff.toml'), 'utf8')));
   });
 
   test('fremde Datei ohne gemerkten Hash gilt als Konflikt (Erstmigration)', () => {
@@ -478,6 +480,56 @@ describe('skip & adopt', () => {
   });
 });
 
+describe('runHarness Orchestrierung', () => {
+  test('persistiert frische Auto-Abwahl ins Manifest (ohne --only)', () => {
+    const dir = project({ name: 'x', devDependencies: { husky: '^9' } });
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    expect(readManifest(dir).declined['git-hooks']).toBe('husky');
+    expect(existsSync(join(dir, 'lefthook.yml'))).toBe(false);
+    // beim Folgelauf nicht mehr 'fresh', sondern persistiert:
+    const st = resolveCapabilities(detectContext(dir), readManifest(dir)).find(
+      (s) => s.cap.id === 'git-hooks'
+    );
+    expect(st).toMatchObject({ declined: true, fresh: false });
+  });
+
+  test('dry-run persistiert keine Auto-Abwahl (kein Manifest)', () => {
+    const dir = project({ name: 'x', devDependencies: { husky: '^9' } });
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: true });
+    expect(existsSync(join(dir, MANIFEST_FILE))).toBe(false);
+  });
+
+  test('--only persistiert keine Auto-Abwahl (chirurgisch, keine stille Mutation)', () => {
+    const dir = project({ name: 'x', devDependencies: { husky: '^9' } });
+    runHarness('sync', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false, only: ['cliff'] });
+    expect(readManifest(dir).declined['git-hooks']).toBeUndefined();
+  });
+
+  test('--only git-hooks patcht nur dessen Script/devDep (chirurgisch)', () => {
+    const dir = project({ name: 'x' });
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false, only: ['git-hooks'] });
+    const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+    expect(pkg.scripts?.prepare).toBe('lefthook install');
+    expect(pkg.devDependencies?.lefthook).toBeDefined();
+    expect(pkg.scripts?.bump).toBeUndefined();
+    expect(pkg.devDependencies?.['@biomejs/biome']).toBeUndefined();
+    expect(existsSync(join(dir, 'biome.json'))).toBe(false);
+  });
+
+  test('--only ohne Treffer im Monorepo schreibt nichts (root + package aggregiert)', () => {
+    const dir = monorepo();
+    const code = runHarness('init', {
+      ...HARNESS_DEFAULTS,
+      cwd: dir,
+      dryRun: false,
+      only: ['unsinn']
+    });
+    expect(code).toBe(0);
+    expect(existsSync(join(dir, 'packages/api/tsconfig.json'))).toBe(false);
+    expect(existsSync(join(dir, 'cliff.toml'))).toBe(false);
+  });
+});
+
 describe('computePkgPlan', () => {
   test('fehlende Scripts & devDeps werden geplant', () => {
     const plan = computePkgPlan(detectContext(project({ name: 'x' })));
@@ -643,6 +695,16 @@ describe('Workspace-/Paket-Support', () => {
 describe('formatDiff', () => {
   test('identische Texte ergeben leeren Diff', () => {
     expect(formatDiff('a\nb\n', 'a\nb\n')).toBe('');
+  });
+
+  test('leere Ausgangs-/Zieldatei: reines Add bzw. Delete inkl. Header-Mathematik', () => {
+    const add = formatDiff('', 'a\nb\n', { color: false });
+    expect(add).toContain('+ a');
+    expect(add).toContain('@@ -1,0 +1,2 @@');
+    const del = formatDiff('a\nb\n', '', { color: false });
+    expect(del).toContain('- a');
+    expect(del).toContain('@@ -1,2 +1,0 @@');
+    expect(formatDiff('', '')).toBe(''); // beide leer = kein Diff
   });
 
   test('zeigt geänderte Zeile mit Kontext und Hunk-Header', () => {
