@@ -609,6 +609,21 @@ describe('satisfiesPin', () => {
     expect(satisfiesPin('github:foo/bar', '^1.0.0')).toBe(true);
     expect(satisfiesPin('*', '^1.0.0')).toBe(true);
   });
+
+  test('compound-Range nutzt den Floor, unabhängig von der Token-Reihenfolge', () => {
+    expect(satisfiesPin('>=2.0.0 <3.0.0', '^2.5.0')).toBe(false); // Floor 2.0.0 < Pin
+    expect(satisfiesPin('<3.0.0 >=2.0.0', '^2.5.0')).toBe(false); // Obergrenze zuerst → trotzdem 2.0.0
+    expect(satisfiesPin('>=2.6.0 <3.0.0', '^2.5.0')).toBe(true); // Floor 2.6.0 ≥ Pin
+  });
+
+  test('tilde-Range mit gleichem Floor erfüllt den Pin', () => {
+    expect(satisfiesPin('~1.3.0', '^1.3.0')).toBe(true);
+  });
+
+  test('npm:-Alias / git-URL mit eingebetteter Version gelten als erfüllt (anderes Paket)', () => {
+    expect(satisfiesPin('npm:@biomejs/biome@^2.5.0', '^2.4.16')).toBe(true);
+    expect(satisfiesPin('git+https://x/y#v1.0.0', '^9.9.9')).toBe(true);
+  });
 });
 
 describe('mutatePkg', () => {
