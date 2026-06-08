@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { runAdopt, runSkip } from '../src/commands/capability.ts';
 import { runHarness } from '../src/commands/harness.ts';
 import { runPin, runUnpin } from '../src/commands/pin.ts';
+import { buildReport, runStatus } from '../src/commands/status.ts';
 import { type ApplyOptions, applyFiles, ensureBunfig, URBICON_REGISTRY } from '../src/lib/apply.ts';
 import {
   CAPABILITIES,
@@ -727,6 +728,45 @@ describe('pin/unpin & sicheres Anheben', () => {
     runHarness('sync', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
     const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
     expect(pkg.devDependencies['@types/node']).toBe('^25.0.0');
+  });
+});
+
+describe('udx status', () => {
+  const statusFlags = (cwd: string, svelte?: boolean) => ({ cwd, svelte, json: false });
+  const rowsOf = (cwd: string, title: string, svelte?: boolean) =>
+    buildReport(statusFlags(cwd, svelte)).sections.find((s) => s.title === title)?.rows ?? [];
+
+  test('frisches Projekt: alle Dateien fehlen', () => {
+    const rows = rowsOf(project({ name: 'x' }), 'Dateien');
+    expect(rows.length).toBeGreaterThan(0);
+    expect(rows.every((r) => r.state === 'missing')).toBe(true);
+  });
+
+  test('behind devDep → state behind mit udx-sync-Befehl', () => {
+    const dir = project({ name: 'x', devDependencies: { '@types/node': '^25.0.0' } });
+    const row = rowsOf(dir, 'package.json', false).find((r) => r.label === '@types/node');
+    expect(row?.state).toBe('behind');
+    expect(row?.cmd).toBe('udx sync');
+  });
+
+  test('husky-Projekt → git-hooks declined-Zeile mit adopt-Befehl', () => {
+    const dir = project({ name: 'x', devDependencies: { husky: '^9' } });
+    const row = rowsOf(dir, 'Bausteine').find((r) => r.cmd?.includes('git-hooks'));
+    expect(row?.state).toBe('declined');
+  });
+
+  test('gepinnte devDep → state pinned mit unpin-Befehl', () => {
+    const dir = project({ name: 'x', devDependencies: { '@types/node': '^25.0.0' } });
+    runPin({ cwd: dir, dryRun: false, dep: '@types/node' });
+    const row = rowsOf(dir, 'package.json', false).find((r) => r.label === '@types/node');
+    expect(row?.state).toBe('pinned');
+    expect(row?.cmd).toBe('udx unpin @types/node');
+  });
+
+  test('runStatus liefert 0 (Tabelle & json)', () => {
+    const dir = project({ name: 'x' });
+    expect(runStatus({ cwd: dir, svelte: false, json: false })).toBe(0);
+    expect(runStatus({ cwd: dir, svelte: false, json: true })).toBe(0);
   });
 });
 

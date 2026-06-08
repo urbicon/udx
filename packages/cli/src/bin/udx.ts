@@ -4,7 +4,9 @@ import { runAdopt, runSkip } from '../commands/capability.ts';
 import { runDoctor } from '../commands/doctor.ts';
 import { type HarnessFlags, runHarness } from '../commands/harness.ts';
 import { runPin, runUnpin } from '../commands/pin.ts';
+import { runStatus } from '../commands/status.ts';
 import { c } from '../lib/colors.ts';
+import { abs, exists } from '../lib/fs.ts';
 import { log } from '../lib/log.ts';
 
 const HELP = `${c.bold('udx')} — urbicon-Entwicklungs-Harness  ${c.gray(`v${pkg.version}`)}
@@ -15,7 +17,8 @@ ${c.bold('Verwendung')}
 ${c.bold('Befehle')}
   init           Harness in ein Projekt einrichten (Configs, Hooks, Scripts, devDeps)
   sync           Verwaltete Dateien aktualisieren (Prozessverbesserungen nachziehen)
-  doctor         Read-only: Projekt auf fehlende/abweichende Harness-Teile prüfen
+  status         Read-only: Ist-Zustand, was ein sync ändern würde und wie (Default ohne Befehl)
+  doctor         Read-only für CI: Projekt auf fehlende/abweichende Harness-Teile prüfen (Exit-Code)
   adopt <id>     Abgewählten Baustein wieder aufnehmen (danach \`udx sync\`)
   skip <id>      Baustein dauerhaft abwählen (z. B. wenn ein anderer Stack genutzt wird)
   pin <dep> [r]  devDep-Version bewusst halten — \`sync\` zieht sie nicht hoch
@@ -27,6 +30,7 @@ ${c.bold('Optionen')}
   -i, --interactive bei Konflikten pro Datei entscheiden (update/skip/diff)
       --only <ids>  nur diese Bausteine (Capability- oder Datei-Ids, kommasepariert)
       --diff        bei Drift den Unterschied lokal → Template anzeigen
+      --json        (status) strukturierte Ausgabe für Tooling
       --svelte      Svelte-Setup erzwingen (statt Auto-Erkennung)
       --no-svelte   reines TS-Setup erzwingen
       --cwd <pfad>  Zielverzeichnis (Default: aktuelles)
@@ -45,6 +49,8 @@ ${c.bold('Beispiele')}
 interface CliFlags extends HarnessFlags {
   /** Nicht-Options-Argumente, z. B. der Baustein-Name bei adopt/skip. */
   positional: string[];
+  /** `--json` (von `status` genutzt). */
+  json: boolean;
 }
 
 function parseFlags(argv: string[]): CliFlags {
@@ -56,7 +62,8 @@ function parseFlags(argv: string[]): CliFlags {
     diff: false,
     only: [],
     interactive: false,
-    positional: []
+    positional: [],
+    json: false
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -71,6 +78,9 @@ function parseFlags(argv: string[]): CliFlags {
         break;
       case '--diff':
         flags.diff = true;
+        break;
+      case '--json':
+        flags.json = true;
         break;
       case '-i':
       case '--interactive':
@@ -112,7 +122,15 @@ if (cmd === '--version' || cmd === '-V') {
   console.log(pkg.version);
   process.exit(0);
 }
-if (cmd === undefined || cmd === '--help' || cmd === '-h' || cmd === 'help') {
+if (cmd === '--help' || cmd === '-h' || cmd === 'help') {
+  console.log(HELP);
+  process.exit(0);
+}
+if (cmd === undefined) {
+  // Bare `udx` in einem Projekt → status (Discoverability); außerhalb eines Projekts → Hilfe.
+  if (exists(abs(process.cwd(), 'package.json'))) {
+    process.exit(runStatus({ cwd: process.cwd(), svelte: undefined, json: false }));
+  }
   console.log(HELP);
   process.exit(0);
 }
@@ -129,6 +147,11 @@ try {
     case 'doctor': {
       const f = parseFlags(rest);
       code = runDoctor({ cwd: f.cwd, svelte: f.svelte, diff: f.diff });
+      break;
+    }
+    case 'status': {
+      const f = parseFlags(rest);
+      code = runStatus({ cwd: f.cwd, svelte: f.svelte, json: f.json });
       break;
     }
     case 'adopt': {
