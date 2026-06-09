@@ -6,9 +6,8 @@ import { formatDiff } from '../lib/diff.ts';
 import { abs, exists, readText } from '../lib/fs.ts';
 import { log } from '../lib/log.ts';
 import { hashContent, readManifest } from '../lib/manifest.ts';
-import { computePkgPlan, type DepTier, type PkgPlan } from '../lib/pkg.ts';
+import { planWorkspace, resolveWorkspaceView } from '../lib/targets.ts';
 import { detectWiring, wiringSkipDeps } from '../lib/wiring.ts';
-import { isTypeScriptPackage, resolveWorkspaces } from '../lib/workspace.ts';
 import { FILE_TEMPLATES } from '../templates/index.ts';
 
 export interface DoctorFlags {
@@ -39,13 +38,10 @@ export function runDoctor(flags: DoctorFlags): number {
     log.err(s);
   };
 
-  const workspaces = resolveWorkspaces(ctx.cwd, ctx.pkg);
-  const isMonorepo = workspaces.length > 0;
-  // TS-Pakete (Asset-Pakete ohne TS-Code übersprungen) — für package-scoped Dateien UND
-  // die per-Svelte-Paket-package.json-Prüfung (D9-C).
-  const tsPkgs = workspaces
-    .map((ws) => ({ ws, pkgCtx: detectContext(abs(ctx.cwd, ws), flags.svelte) }))
-    .filter(({ pkgCtx }) => isTypeScriptPackage(pkgCtx.cwd, pkgCtx.pkg));
+  // Gemeinsame Workspace-Sicht mit init/sync/status: TS-Pakete (für package-scoped Dateien + den
+  // per-Svelte-Paket-Plan, D9-C), das Root-Tier und der Catalog (D9-A).
+  const view = resolveWorkspaceView(ctx, flags.svelte);
+  const { isMonorepo, tsPkgs } = view;
 
   log.plain();
   log.step('Dateien');
@@ -92,7 +88,7 @@ export function runDoctor(flags: DoctorFlags): number {
   if (tsPkgs.length > 0) {
     log.plain();
     log.step('Pakete');
-    for (const { ws, pkgCtx } of tsPkgs) {
+    for (const { ws, ctx: pkgCtx } of tsPkgs) {
       for (const t of FILE_TEMPLATES) {
         if ((t.scope ?? 'root') !== 'package') continue;
         if (t.applies && !t.applies(pkgCtx)) continue;
@@ -146,24 +142,31 @@ export function runDoctor(flags: DoctorFlags): number {
     pinned: new Set(Object.keys(manifest.pinned))
   };
   // Root-Tier (svelte-Root = alles) + je Svelte-Paket das svelte-Tier (D9-C); Label kennzeichnet das Paket.
-  const rootTier: DepTier | undefined = isMonorepo && !ctx.svelte ? 'root' : undefined;
-  const pkgPlans: { label: string; plan: PkgPlan }[] = [
-    { label: '', plan: computePkgPlan(ctx, pkgFilter, rootTier) }
-  ];
-  for (const { ws, pkgCtx } of tsPkgs) {
-    if (pkgCtx.svelte)
-      pkgPlans.push({ label: `${ws}: `, plan: computePkgPlan(pkgCtx, pkgFilter, 'svelte') });
-  }
-  for (const { label, plan } of pkgPlans) {
+  // Mit Catalog-Akkumulation planen (wie der echte sync, D9-A/E) — so meldet doctor exakt dessen Ergebnis.
+  const catLabel = (ch: { name: string; table: string | null }) =>
+    ch.table ? `${ch.name} (catalogs.${ch.table})` : ch.name;
+  const { targets, catalogChanges } = planWorkspace(view, pkgFilter);
+  for (const { ws, plan } of targets) {
+    const label = ws ? `${ws}: ` : '';
     if (plan.scriptsToAdd.length === 0) pass(`${label}Scripts vollständig`);
     else fail(`${label}fehlende Scripts: ${plan.scriptsToAdd.map((s) => s.name).join(', ')}`);
-    if (plan.devDepsToAdd.length === 0) pass(`${label}devDeps vollständig`);
-    else fail(`${label}fehlende devDeps: ${plan.devDepsToAdd.map((s) => s.name).join(', ')}`);
+    if (plan.devDepsToAdd.length === 0 && plan.devDepsToCatalog.length === 0)
+      pass(`${label}devDeps vollständig`);
+    else if (plan.devDepsToAdd.length > 0)
+      fail(`${label}fehlende devDeps: ${plan.devDepsToAdd.map((s) => s.name).join(', ')}`);
+    for (const ch of plan.devDepsToCatalog)
+      warn(`${label}devDep ${ch.name} ${ch.from} → ${ch.to} (sync stellt um)`);
     for (const ch of plan.scriptsDrift) warn(`${label}script ${ch.name} weicht ab`);
     for (const ch of plan.devDepsDrift)
       warn(`${label}devDep ${ch.name} ${ch.from ?? '?'} → ${ch.to} (sync zieht hoch)`);
     for (const ch of plan.devDepsPinned)
       log.skip(`${label}devDep ${ch.name} gehalten bei ${ch.from ?? '(nicht installiert)'}`);
+  }
+  // Catalog-Einträge sind Root-global: die effektive Differenz nach Akkumulation. Fehlend ⇒ fail
+  // (catalog:-devDep ohne Eintrag bricht bun install), hinter Pin ⇒ warn (sync zieht sicher hoch).
+  for (const ch of catalogChanges) {
+    if (ch.from === undefined) fail(`fehlender Catalog-Eintrag: ${catLabel(ch)} → ${ch.to}`);
+    else warn(`Catalog ${catLabel(ch)} ${ch.from} → ${ch.to} (sync zieht hoch)`);
   }
 
   log.plain();

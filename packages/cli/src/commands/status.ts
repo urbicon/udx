@@ -6,12 +6,12 @@ import { abs, exists, readText } from '../lib/fs.ts';
 import { log } from '../lib/log.ts';
 import { type Manifest, readManifest } from '../lib/manifest.ts';
 import {
+  type CatalogChange,
   canonicalDevDeps,
   canonicalScripts,
-  computePkgPlan,
-  type DepTier,
   type PkgPlan
 } from '../lib/pkg.ts';
+import { planWorkspace, resolveWorkspaceView } from '../lib/targets.ts';
 import { detectWiring, wiringSkipDeps } from '../lib/wiring.ts';
 import { isTypeScriptPackage, resolveWorkspaces } from '../lib/workspace.ts';
 
@@ -113,6 +113,14 @@ function pkgRows(plan: PkgPlan, prefix = ''): Row[] {
       detail: `${ch.from} → ${ch.to}`,
       cmd: 'udx sync'
     });
+  // D9: literale devDep wird auf den Catalog-Verweis umgestellt.
+  for (const ch of plan.devDepsToCatalog)
+    rows.push({
+      state: 'behind',
+      label: `${prefix}${ch.name}`,
+      detail: `${ch.from} → ${ch.to}`,
+      cmd: 'udx sync'
+    });
   for (const ch of plan.scriptsToAdd)
     rows.push({
       state: 'missing',
@@ -135,6 +143,11 @@ function pkgRows(plan: PkgPlan, prefix = ''): Row[] {
       cmd: `udx unpin ${ch.name}`
     });
   return rows;
+}
+
+/** Label einer Catalog-Eintrags-Zeile (mit benanntem Catalog, falls nicht der Default). */
+function catalogLabel(ch: CatalogChange): string {
+  return ch.table ? `${ch.name} (catalogs.${ch.table})` : ch.name;
 }
 
 /** Erzeugt den vollständigen Statusbericht — wiederverwendet dieselben Engines wie init/sync/doctor. */
@@ -168,33 +181,42 @@ export function buildReport(flags: StatusFlags): {
 
   const dateien = fileRows(ctx, declined.files, manifest);
 
-  // package.json: nur das Handlungsrelevante als Zeile, der Rest als „in sync"-Zähler.
-  // Monorepo: Root trägt das root-Tier (svelte-Root = alles); jedes Svelte-Paket sein svelte-Tier (D9-C).
-  const workspaces = resolveWorkspaces(ctx.cwd, ctx.pkg);
-  const isMonorepo = workspaces.length > 0;
-  const sveltePkgs = isMonorepo
-    ? workspaces
-        .map((ws) => ({ ws, pkgCtx: detectContext(abs(ctx.cwd, ws), flags.svelte) }))
-        .filter(({ pkgCtx }) => isTypeScriptPackage(pkgCtx.cwd, pkgCtx.pkg) && pkgCtx.svelte)
-    : [];
-  const rootTier: DepTier | undefined = isMonorepo && !ctx.svelte ? 'root' : undefined;
+  // package.json: nur das Handlungsrelevante als Zeile, der Rest als „in sync"-Zähler. Monorepo: Root
+  // trägt das root-Tier (svelte-Root = alles); jedes Svelte-Paket sein svelte-Tier (D9-C). Im
+  // Catalog-Modus (D9-A) werden Tool-Versionen als catalog: geführt + die Einträge gepflegt.
+  const view = resolveWorkspaceView(ctx, flags.svelte);
+  const { rootTier } = view; // für den root-Tier-„in sync"-Zähler; catalog nutzt planWorkspace intern
   const skipFilter = { skip: { scripts: declined.scripts, devDeps: skipDeps }, pinned };
 
-  const plan = computePkgPlan(ctx, skipFilter, rootTier);
-  const pkg: Row[] = pkgRows(plan);
-  let held = plan.devDepsPinned.length;
-  for (const { ws, pkgCtx } of sveltePkgs) {
-    const subPlan = computePkgPlan(pkgCtx, skipFilter, 'svelte');
-    pkg.push(...pkgRows(subPlan, `${ws}/`));
-    held += subPlan.devDepsPinned.length;
-  }
+  // Mit Catalog-Akkumulation planen (wie der echte sync) — so meldet status exakt dessen Ergebnis.
+  const { targets, catalogChanges } = planWorkspace(view, skipFilter);
+  const plan = targets[0]?.plan as PkgPlan; // Root-Plan (immer vorhanden)
+  const pkg: Row[] = targets.flatMap((t) => pkgRows(t.plan, t.ws ? `${t.ws}/` : ''));
+  const held = targets.reduce((n, t) => n + t.plan.devDepsPinned.length, 0);
+
+  // Catalog-Einträge sind Root-global: die effektive Differenz nach Akkumulation (dedupliziert, Maximum).
+  const catalogRows: Row[] = catalogChanges.map((ch) =>
+    ch.from === undefined
+      ? { state: 'missing', label: catalogLabel(ch), detail: `fehlt → ${ch.to}`, cmd: 'udx sync' }
+      : {
+          state: 'behind',
+          label: catalogLabel(ch),
+          detail: `${ch.from} → ${ch.to}`,
+          cmd: 'udx sync'
+        }
+  );
 
   // „In sync" = kanonische Scripts/devDeps des root-Tiers (ohne abgewählte), die in KEINER Plan-Liste
   // stehen — direkt gezählt statt arithmetisch, damit kein künftiges Capability-Dep ohne canonical-Pendant
   // still falsch zählt. (Svelte-Paket-Deps zählen als Handlungsbedarf, nicht in diesen Root-Zähler.)
   const plannedScripts = new Set([...plan.scriptsToAdd, ...plan.scriptsDrift].map((ch) => ch.name));
   const plannedDeps = new Set(
-    [...plan.devDepsToAdd, ...plan.devDepsDrift, ...plan.devDepsPinned].map((ch) => ch.name)
+    [
+      ...plan.devDepsToAdd,
+      ...plan.devDepsDrift,
+      ...plan.devDepsPinned,
+      ...plan.devDepsToCatalog // sonst zählt ein auf catalog: umgestellter Dep doppelt (als Switch + „in sync")
+    ].map((ch) => ch.name)
   );
   const inSync =
     Object.keys(canonicalScripts(ctx, rootTier)).filter(
@@ -236,6 +258,7 @@ export function buildReport(flags: StatusFlags): {
       { title: 'Bausteine', rows: bausteine },
       { title: 'Dateien', rows: dateien },
       { title: 'package.json', rows: pkg },
+      { title: 'Catalog', rows: catalogRows },
       { title: 'Verdrahtung', rows: verdrahtung },
       { title: 'Registry', rows: registry }
     ]

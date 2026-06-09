@@ -8,7 +8,7 @@ import {
   resolveSelection,
   type Selection
 } from '../lib/capabilities.ts';
-import { type CatalogTables, readCatalogTables } from '../lib/catalog.ts';
+import type { CatalogTables } from '../lib/catalog.ts';
 import { c } from '../lib/colors.ts';
 import { detectContext, type PackageJson, type ProjectContext } from '../lib/detect.ts';
 import { formatDiff } from '../lib/diff.ts';
@@ -23,9 +23,9 @@ import {
   type PkgSet,
   wireCatalog
 } from '../lib/pkg.ts';
+import { resolveWorkspaceView } from '../lib/targets.ts';
 import { CLI_VERSION } from '../lib/versions.ts';
 import { detectWiring, type WiringState, wiringSkipDeps } from '../lib/wiring.ts';
-import { isTypeScriptPackage, resolveWorkspaces } from '../lib/workspace.ts';
 import { FILE_TEMPLATES } from '../templates/index.ts';
 
 export interface HarnessFlags {
@@ -393,16 +393,12 @@ export function runHarness(
     ? { scripts: selection.scripts, devDeps: selection.devDeps }
     : undefined;
 
-  // Monorepo: package-scoped Bausteine (tsconfig) laufen je Paket, nicht im Root.
-  const workspaces = resolveWorkspaces(ctx.cwd, ctx.pkg);
-  const isMonorepo = workspaces.length > 0;
-  // TS-Pakete (Asset-Pakete ohne TS-Code übersprungen) — Quelle für die package-scoped Dateien
-  // UND die per-Paket-package.json-Patches (Svelte-Tier, D9-C).
-  const tsPkgs = isMonorepo
-    ? workspaces
-        .map((ws) => ({ ws, pkgCtx: detectContext(abs(ctx.cwd, ws), flags.svelte) }))
-        .filter(({ pkgCtx }) => isTypeScriptPackage(pkgCtx.cwd, pkgCtx.pkg))
-    : [];
+  // Monorepo: package-scoped Bausteine (tsconfig) laufen je Paket, nicht im Root. Die gemeinsame
+  // Workspace-Sicht (tsPkgs + rootTier + catalog) teilt sich harness mit status/doctor.
+  const { catalog, isMonorepo, rootTier, tsPkgs, workspaces } = resolveWorkspaceView(
+    ctx,
+    flags.svelte
+  );
   const baseOpts: ApplyOptions = {
     mode,
     dryRun: flags.dryRun,
@@ -440,7 +436,7 @@ export function runHarness(
   if (tsPkgs.length > 0) {
     log.plain();
     log.step('Pakete');
-    for (const { ws, pkgCtx } of tsPkgs) {
+    for (const { ws, ctx: pkgCtx } of tsPkgs) {
       const pkgResults = applyFiles(
         pkgCtx.cwd,
         pkgCtx,
@@ -474,7 +470,6 @@ export function runHarness(
   // Catalog-Modus (D9-A): das Root-pkg wird einmal gelesen, alle Patches mutieren das gemeinsame
   // `catalog`-Arbeitsobjekt (Akkumulation über Pakete) und das Root-pkg, das am Ende einmal geschrieben
   // wird (per `wireCatalog`) — so entsteht nie ein `catalog:`-devDep ohne seinen Eintrag.
-  const rootTier: DepTier | undefined = isMonorepo && !ctx.svelte ? 'root' : undefined;
   // Die pkg-Objekte sind bereits via detectContext gelesen (`{}` wenn die Datei fehlt) — wiederverwenden
   // statt erneut von der Platte zu lesen (robust auch im Dry-Run ohne package.json).
   const rootPkg = ctx.pkg;
@@ -485,7 +480,7 @@ export function runHarness(
     only: onlyPkg,
     pinned: new Set(Object.keys(manifest.pinned)),
     wiringSkip,
-    catalog: readCatalogTables(rootPkg)
+    catalog
   };
 
   let pkgChanged = false; // installierbare Änderungen (für installPlan)
@@ -495,7 +490,7 @@ export function runHarness(
   pkgChanged ||= rootRes.installable;
   rootDirty ||= rootRes.targetChanged || rootRes.rootCatalogChanged;
 
-  for (const { ws, pkgCtx } of tsPkgs) {
+  for (const { ws, ctx: pkgCtx } of tsPkgs) {
     if (!pkgCtx.svelte) continue;
     const res = patchPkg(pkgCtx, pkgCtx.pkg, shared, 'svelte', `${ws}/package.json`);
     if (res.targetChanged && !flags.dryRun) writeJson(abs(pkgCtx.cwd, 'package.json'), pkgCtx.pkg);

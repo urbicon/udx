@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runAdd, runAdopt, runSkip } from '../src/commands/capability.ts';
+import { runDoctor } from '../src/commands/doctor.ts';
 import { installPlan, runHarness } from '../src/commands/harness.ts';
 import { helpText } from '../src/commands/help.ts';
 import { runPin, runUnpin } from '../src/commands/pin.ts';
@@ -1343,6 +1344,99 @@ describe('udx status', () => {
     const dir = project({ name: 'x' });
     expect(runStatus({ cwd: dir, svelte: false, json: false })).toBe(0);
     expect(runStatus({ cwd: dir, svelte: false, json: true })).toBe(0);
+  });
+});
+
+describe('Catalog-Reporting in status/doctor (D9 WP4)', () => {
+  const rowsOf = (cwd: string, title: string) =>
+    buildReport({ cwd, svelte: undefined, json: false }).sections.find((s) => s.title === title)
+      ?.rows ?? [];
+  const writePkg = (dir: string, mut: (p: Record<string, unknown>) => void) => {
+    const p = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+    mut(p);
+    writeFileSync(join(dir, 'package.json'), JSON.stringify(p));
+  };
+
+  test('status: Catalog-Sektion meldet fehlenden Eintrag + package.json den catalog:-Switch', () => {
+    const dir = monorepo(true, {});
+    writePkg(dir, (p) => {
+      p.devDependencies = { '@biomejs/biome': '^2.0.0' };
+    });
+    expect(rowsOf(dir, 'Catalog').find((r) => r.label === '@biomejs/biome')?.state).toBe('missing');
+    const sw = rowsOf(dir, 'package.json').find((r) => r.label === '@biomejs/biome');
+    expect(sw?.state).toBe('behind');
+    expect(sw?.detail).toContain('catalog:');
+  });
+
+  test('status: Catalog-Drift (Eintrag hinter Pin) → behind in der Catalog-Sektion', () => {
+    const dir = monorepo(true, { '@biomejs/biome': '^2.0.0' });
+    writePkg(dir, (p) => {
+      p.devDependencies = { '@biomejs/biome': 'catalog:' };
+    });
+    const row = rowsOf(dir, 'Catalog').find((r) => r.label === '@biomejs/biome');
+    expect(row?.state).toBe('behind');
+    expect(row?.detail).toContain('^2.0.0 →');
+  });
+
+  test('status: Catalog-Einträge über Svelte-Pakete dedupliziert (svelte-check nur einmal)', () => {
+    const dir = monorepo(true, {});
+    mkdirSync(join(dir, 'packages/admin'), { recursive: true });
+    writeFileSync(
+      join(dir, 'packages/admin/package.json'),
+      JSON.stringify({ name: 'admin', devDependencies: { svelte: '^5' } })
+    );
+    expect(rowsOf(dir, 'Catalog').filter((r) => r.label === 'svelte-check').length).toBe(1);
+  });
+
+  test('status: literal-Monorepo zeigt keine Catalog-Sektion', () => {
+    expect(rowsOf(monorepo(), 'Catalog')).toEqual([]);
+  });
+
+  test('doctor: Catalog-Consumer nach init in sync (catalog: + Einträge korrekt erkannt)', () => {
+    const dir = monorepo(true, {});
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    expect(runDoctor({ cwd: dir, svelte: undefined, diff: false })).toBe(0);
+  });
+
+  test('doctor: catalog:-devDep ohne Eintrag → fail (fehlender Catalog-Eintrag)', () => {
+    const dir = monorepo(true, {});
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    writePkg(dir, (p) => {
+      delete (p.workspaces as { catalog: Record<string, string> }).catalog['@biomejs/biome'];
+    });
+    expect(runDoctor({ cwd: dir, svelte: undefined, diff: false })).toBe(1);
+  });
+
+  test('status: auf catalog: umgestellter Dep zählt nicht doppelt (Switch ≠ „in sync")', () => {
+    const biome = VERSIONS['@biomejs/biome'];
+    const dir = project({
+      name: 'solo',
+      workspaces: { catalog: { '@biomejs/biome': biome, typescript: VERSIONS.typescript } },
+      devDependencies: { '@biomejs/biome': biome, typescript: 'catalog:' }
+    });
+    const rows = rowsOf(dir, 'package.json');
+    expect(rows.find((r) => r.label === '@biomejs/biome')?.state).toBe('behind'); // Switch-Zeile
+    expect(rows.find((r) => r.label === 'typescript')).toBeUndefined(); // schon catalog: → in sync
+    // typescript zählt als „in sync", biome (Switch) NICHT — sonst stünde hier „2 weitere".
+    expect(rows.find((r) => r.detail.includes('in sync'))?.label).toBe('1 weitere');
+  });
+
+  test('status: Catalog-Drift-Ziel ist das Maximum über Svelte-Pakete (Akkumulation wie sync)', () => {
+    const dir = monorepo(true, { 'svelte-check': '^4.0.0' });
+    // packages/admin (alphabetisch zuerst) hält die NIEDRIGERE Version → ohne Akkumulation würde
+    // status fälschlich admins Ziel melden statt des effektiven Maximums (^4.5.0 von ui).
+    writeFileSync(
+      join(dir, 'packages/ui/package.json'),
+      JSON.stringify({ name: 'ui', devDependencies: { svelte: '^5', 'svelte-check': '^4.5.0' } })
+    );
+    mkdirSync(join(dir, 'packages/admin'), { recursive: true });
+    writeFileSync(
+      join(dir, 'packages/admin/package.json'),
+      JSON.stringify({ name: 'admin', devDependencies: { svelte: '^5', 'svelte-check': '^4.1.0' } })
+    );
+    const row = rowsOf(dir, 'Catalog').find((r) => r.label === 'svelte-check');
+    expect(row?.state).toBe('behind');
+    expect(row?.detail).toBe('^4.0.0 → ^4.5.0');
   });
 });
 
