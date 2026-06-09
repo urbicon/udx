@@ -98,7 +98,9 @@ sieht den Zustand statt ihn zu erfragen, und löst riskante Aktionen nur bewusst
 - [x] Tests + committen + Review (2 Agenten) → Befund behoben: `udx add <cap> --force` ist additiv (kein create-only-Overwrite; bewusstes Ersetzen nur via `sync --only --force`).
 
 ### Defer / v2
-- [ ] D9: Catalog-aware Consumer-Writes (`catalog:` + fremden Catalog pflegen) — eigener Plan.
+- [x] D9: Catalog-aware Consumer-Writes (`catalog:` + fremden Catalog pflegen) + per-Paket-Svelte-Deps
+  → eigener Plan [d9-catalog-aware.md](d9-catalog-aware.md), umgesetzt (WP1–WP4, Branch
+  `feat/catalog-aware-writes`).
 - [ ] Docs/CLAUDE.md final über alle WPs konsolidieren (`docs-review`).
 
 ## Reihenfolge
