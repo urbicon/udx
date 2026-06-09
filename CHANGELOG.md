@@ -4,6 +4,49 @@ All notable changes to this project will be documented in this file.
 This changelog is automatically generated from [Conventional Commits](https://www.conventionalcommits.org).
 
 
+## [0.1.5] - 2026-06-09
+
+### Bug Fixes
+- **cli**: Pins als baseline behandeln statt downgrades zu erzwingen
+- **cli**: SatisfiesPin robuster gegen compound-ranges & alias-specifier
+- **cli**: Gepinnte fehlende dep melden statt still schlucken
+- **cli**: Status — declined-dateien strukturell filtern, manifest teilen
+- **deps**: Stack:update review-befunde + renovate via customManager
+- **cli**: InstallDeps — spawn-throw abfangen, ehrlichere fehlermeldung
+- **cli**: Generierte biome.json schließt .svelte immer aus
+- **cli**: Add ist additiv — kein force-overwrite von create-only (WP9-review)
+
+### Documentation
+- **plan**: Version-governance roadmap mit abhakbaren arbeitspaketen
+- Wp1+wp2 im plan abgehakt, npm-only-entscheidung festgehalten
+- Wp3+wp5 im plan abgehakt
+- Wp4 im plan abgehakt
+- Wp6 im plan abgehakt
+- Wp7 im plan abgehakt
+- Wp8 im plan abgehakt — wp1–wp8 vollständig
+- Wp9 + biome-svelte-fix im plan abgehakt (buny-feedback)
+- D9-Plan ins Repo + Defer-Item in version-governance abgehakt
+
+### Features
+- **cli**: Sync zieht versionen sicher hoch (ohne --force) + udx pin/unpin
+- **cli**: Udx status — gruppierte sicht auf zustand, drift & aktion
+- **cli**: Udx add/remove — dev-facing verben + naming-aliase
+- **deps**: Stack:update-script + renovate für catalog-bumps
+- **cli**: Udx sync/init/add --install — bun install opt-in
+- **cli**: Verdrahtungs-bewusstsein für @urbicon-config-pakete (WP9)
+- **cli**: Per-Paket-Svelte-Tier — schließt den Svelte-Monorepo-Gap (D9 WP1)
+- **cli**: Catalog-Read-Modell + Plan-Arrays für den Catalog-Modus (D9 WP2)
+- **cli**: Atomare Catalog-Writes + Root-pkg-Verdrahtung (D9 WP3)
+- **cli**: Status/doctor Catalog-Reporting + geteilter Workspace-Helfer (D9 WP4)
+
+### Refactoring
+- **cli**: Versions.ts aus dem bun-catalog ableiten statt hardcodieren
+
+### Testing
+- **cli**: Dogfooding-invariante — udx nutzt seinen catalog konsequent
+- Svelte-fixture dogfoodet den vorgeschriebenen svelte-toolstack
+- Prettier in svelte-fixture auf .svelte scopen (.prettierignore)
+
 ## [0.1.4] - 2026-06-08
 
 ### Miscellaneous
