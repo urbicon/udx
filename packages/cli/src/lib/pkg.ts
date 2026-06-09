@@ -1,8 +1,18 @@
+import { type CatalogTables, selectCatalogTable } from './catalog.ts';
 import type { PackageJson, ProjectContext } from './detect.ts';
 import { type DepName, SVELTE_DEPS, TOOL_DEPS, URBICON_DEPS, VERSIONS } from './versions.ts';
 
 export interface PkgChange {
   name: string;
+  to: string;
+  from?: string;
+}
+
+/** Eine Catalog-Eintrags-Änderung (D9): Dep-Name + Zieltabelle (`null` = Default-Catalog). */
+export interface CatalogChange {
+  name: string;
+  /** `null` = Default-Catalog (`workspaces.catalog`), sonst der Name des benannten Catalogs. */
+  table: string | null;
   to: string;
   from?: string;
 }
@@ -14,7 +24,15 @@ export interface PkgPlan {
   devDepsDrift: PkgChange[];
   /** Hinter dem Pin, aber bewusst gehalten (`udx pin`) — wird nicht angehoben, nur zur Sicht gemeldet. */
   devDepsPinned: PkgChange[];
+  /** D9 Catalog-Modus: fehlender Catalog-Eintrag (wird mit dem `catalog:`-devDep atomar angelegt). */
+  catalogEntriesToAdd: CatalogChange[];
+  /** D9 Catalog-Modus: vorhandener Eintrag hinter Pin/literaler devDep → sicher anheben (nie Downgrade). */
+  catalogEntriesDrift: CatalogChange[];
+  /** D9 Catalog-Modus: literale/abweichende devDep → auf `catalog:`/`catalog:<name>` umstellen (`to` = ref). */
+  devDepsToCatalog: PkgChange[];
 }
+
+const URBICON_SET = new Set<string>(URBICON_DEPS);
 
 /**
  * Platzierungs-Tier eines Bausteins im Monorepo (D9-C):
@@ -82,6 +100,32 @@ function floorVersion(range: string): string | null {
 }
 
 /**
+ * Reiner Versions-Range (führende Operatoren `v^~>=<`, dann eine Ziffer)? Protokolle wie
+ * `catalog:`/`workspace:`/`npm:`/`github:`/`git+…` beginnen mit einem Buchstaben → `false`.
+ */
+function isVersionRange(s: string): boolean {
+  return /^[v^~>=<\s]*\d/.test(s);
+}
+
+/**
+ * Hebt `current` auf mindestens `target` an (Floor-Vergleich, semver-bewusst) — nie ein Downgrade.
+ * Liegt `current` bereits ≥ `target` (oder ist nicht vergleichbar: Protokoll, `*`), bleibt es
+ * unverändert (auch Build-Metadaten/Pre-Release bleiben so erhalten). Beim Anheben behält eine
+ * einfache Single-Token-Range (`^`/`~`/`>=`/`v` + Version) ihren Operator; eine Compound-/exotische
+ * Range wird durch das saubere `target` ersetzt, statt eine kaputte Range zu bauen. Grundlage der
+ * Catalog-Pflege (D9-E); verwandt mit dem operator-erhaltenden Anheben in `scripts/stack-update.ts`
+ * (dort gegen die Registry, hier gegen den udx-Pin).
+ */
+export function raise(current: string, target: string): string {
+  const cf = floorVersion(current);
+  const tf = floorVersion(target);
+  if (cf === null || tf === null) return current; // nicht vergleichbar → unverändert
+  if (Bun.semver.order(cf, tf) >= 0) return current; // current ≥ target → kein Downgrade
+  const simple = current.trim().match(/^([v^~>=]*)\d[\w.+-]*$/);
+  return simple ? `${simple[1]}${tf}` : target;
+}
+
+/**
  * Die Pins in `versions.ts` sind eine **Baseline** (Mindestversion), kein exakter Sollwert: hat ein
  * Projekt bereits eine neuere, kompatible Version, ist der Pin erfüllt — udx zieht Projekte aufs
  * Minimum hoch, setzt sie aber nie herunter (sonst entstünde das @types/node-Downgrade). Nur eine
@@ -90,9 +134,9 @@ function floorVersion(range: string): string | null {
  * erfüllt — ein Downgrade von etwas, das wir nicht semantisch vergleichen können, wäre gefährlich.
  */
 export function satisfiesPin(current: string, pin: string): boolean {
-  // Nur reine Versions-Ranges vergleichen: führende Operatoren erlaubt, dann eine Ziffer. Protokolle
-  // (`workspace:`/`catalog:`/`npm:`/`github:`/`git+…`) beginnen mit einem Buchstaben → gelten als erfüllt.
-  if (!/^[v^~>=<\s]*\d/.test(current)) return true;
+  // Nur reine Versions-Ranges vergleichen: Protokolle (`workspace:`/`catalog:`/`npm:`/`github:`/`git+…`)
+  // beginnen mit einem Buchstaben → gelten als erfüllt (Version anderswo geregelt, nie blind downgraden).
+  if (!isVersionRange(current)) return true;
   const cur = floorVersion(current);
   const want = floorVersion(pin);
   if (cur === null || want === null) return true;
@@ -114,14 +158,19 @@ export interface PkgFilter {
 export function computePkgPlan(
   ctx: ProjectContext,
   filter: PkgFilter = {},
-  tier?: DepTier
+  tier?: DepTier,
+  /** Catalog-Tabellen des Consumers (vom Caller aus dem Root-pkg gelesen); `null` ⇒ literal-Modus (D9-A). */
+  catalog: CatalogTables | null = null
 ): PkgPlan {
   const plan: PkgPlan = {
     scriptsToAdd: [],
     scriptsDrift: [],
     devDepsToAdd: [],
     devDepsDrift: [],
-    devDepsPinned: []
+    devDepsPinned: [],
+    catalogEntriesToAdd: [],
+    catalogEntriesDrift: [],
+    devDepsToCatalog: []
   };
   const scripts = ctx.pkg.scripts ?? {};
   const devDeps = ctx.pkg.devDependencies ?? {};
@@ -139,21 +188,49 @@ export function computePkgPlan(
     if (only?.devDeps && !only.devDeps.has(name)) continue;
     if (skip?.devDeps?.has(name)) continue;
     const current = devDeps[name];
-    // Bewusst gehalten (`udx pin`) → unberührt lassen (kein Anheben, kein Ergänzen), aber stets
-    // melden — auch wenn nicht installiert —, damit ein aktiver Pin nie still „verschwindet".
+    const pin = to as string;
+    // Bewusst gehalten (`udx pin`) → unberührt lassen (kein Anheben, kein Ergänzen, kein catalog:-Switch),
+    // aber stets melden — auch wenn nicht installiert —, damit ein aktiver Pin nie still „verschwindet".
+    // Steht VOR der Catalog-Logik: ein Switch auf `catalog:` würde den Pin sonst unterlaufen.
     if (pinned?.has(name)) {
       plan.devDepsPinned.push(
-        current !== undefined
-          ? { name, to: to as string, from: current }
-          : { name, to: to as string }
+        current !== undefined ? { name, to: pin, from: current } : { name, to: pin }
       );
       continue;
     }
-    if (current === undefined) plan.devDepsToAdd.push({ name, to: to as string });
-    // Drift nur, wenn das Projekt echt hinter dem Pin liegt (nicht bei neuerer kompatibler Version).
-    else if (!satisfiesPin(current, to as string)) {
-      plan.devDepsDrift.push({ name, to: to as string, from: current });
+
+    // Literal-Modus (kein Catalog) oder @urbicon/* (unified mit der CLI-Version, nie via Catalog/Renovate
+    // bumpen, D9-D) → bisheriges Verhalten: literale Version ergänzen bzw. sicher anheben.
+    if (catalog === null || URBICON_SET.has(name)) {
+      if (current === undefined) plan.devDepsToAdd.push({ name, to: pin });
+      else if (!satisfiesPin(current, pin))
+        plan.devDepsDrift.push({ name, to: pin, from: current });
+      continue;
     }
+
+    // Catalog-Modus (D9): den Eintrag pflegen UND die devDep auf `catalog:` führen. Beide entstehen im
+    // selben Plan, damit WP3 sie atomar schreibt — ein `catalog:` ohne Eintrag bricht `bun install`.
+    const pick = selectCatalogTable(catalog, name);
+    const literal = current !== undefined && isVersionRange(current) ? current : undefined;
+    if (pick.current === undefined) {
+      // Neuer Eintrag: Pin als Basis, auf eine evtl. höhere literale devDep anheben (nie Downgrade, D9-E).
+      plan.catalogEntriesToAdd.push({
+        name,
+        table: pick.table,
+        to: literal ? raise(pin, literal) : pin
+      });
+    } else {
+      // Vorhandener Eintrag: anheben, wenn hinter dem Pin oder hinter einer literalen devDep.
+      let entry = pick.current;
+      if (!satisfiesPin(pick.current, pin)) entry = raise(entry, pin);
+      if (literal && !satisfiesPin(pick.current, literal)) entry = raise(entry, literal);
+      if (entry !== pick.current)
+        plan.catalogEntriesDrift.push({ name, table: pick.table, from: pick.current, to: entry });
+    }
+    // devDep auf den Catalog-Verweis führen (Eintrag ist durch obiges garantiert vorhanden/geplant).
+    if (current === undefined) plan.devDepsToAdd.push({ name, to: pick.ref });
+    else if (current !== pick.ref)
+      plan.devDepsToCatalog.push({ name, from: current, to: pick.ref });
   }
 
   return plan;

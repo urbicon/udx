@@ -14,6 +14,7 @@ import {
   resolveCapabilities,
   resolveSelection
 } from '../src/lib/capabilities.ts';
+import { readCatalogTables, selectCatalogTable } from '../src/lib/catalog.ts';
 import { detectContext, type ProjectContext } from '../src/lib/detect.ts';
 import { formatDiff } from '../src/lib/diff.ts';
 import {
@@ -29,6 +30,7 @@ import {
   canonicalScripts,
   computePkgPlan,
   mutatePkg,
+  raise,
   satisfiesPin
 } from '../src/lib/pkg.ts';
 import { SVELTE_DEPS, TOOL_DEPS, VERSIONS } from '../src/lib/versions.ts';
@@ -733,6 +735,218 @@ describe('Per-Paket-Svelte-Tier (D9 WP1)', () => {
     expect(canonicalScripts(plainCtx, 'svelte')).toEqual({});
     expect(canonicalScripts(plainCtx, 'root').lint).toBe('biome check .');
     expect(canonicalScripts(plainCtx, 'root').prepare).toBe('lefthook install');
+  });
+});
+
+describe('Catalog-Modell (D9 WP2)', () => {
+  test('readCatalogTables: Objekt-Form mit catalog → Tabellen', () => {
+    const t = readCatalogTables({ workspaces: { catalog: { '@biomejs/biome': '^2.4.0' } } });
+    expect(t?.default['@biomejs/biome']).toBe('^2.4.0');
+    expect(t?.named).toEqual({});
+  });
+
+  test('readCatalogTables: Array-Form → null (kein catalog: möglich)', () => {
+    expect(readCatalogTables({ workspaces: ['packages/*'] })).toBeNull();
+  });
+
+  test('readCatalogTables: Objekt-Form ohne catalog/catalogs → null (kein Catalog-First)', () => {
+    expect(readCatalogTables({ workspaces: { packages: ['packages/*'] } })).toBeNull();
+  });
+
+  test('readCatalogTables: kein workspaces → null', () => {
+    expect(readCatalogTables({ name: 'x' })).toBeNull();
+  });
+
+  test('readCatalogTables: benannte Catalogs', () => {
+    const t = readCatalogTables({
+      workspaces: { catalogs: { svelte: { 'svelte-check': '^4.0.0' } } }
+    });
+    expect(t?.named.svelte?.['svelte-check']).toBe('^4.0.0');
+    expect(t?.default).toEqual({});
+  });
+
+  test('selectCatalogTable: Default-Treffer / named-Treffer / nirgends', () => {
+    expect(selectCatalogTable({ default: { biome: '^2.0.0' }, named: {} }, 'biome')).toEqual({
+      table: null,
+      ref: 'catalog:',
+      current: '^2.0.0'
+    });
+    expect(
+      selectCatalogTable(
+        { default: {}, named: { svelte: { 'svelte-check': '^4.0.0' } } },
+        'svelte-check'
+      )
+    ).toEqual({ table: 'svelte', ref: 'catalog:svelte', current: '^4.0.0' });
+    expect(selectCatalogTable({ default: {}, named: {} }, 'neu')).toEqual({
+      table: null,
+      ref: 'catalog:',
+      current: undefined
+    });
+  });
+
+  test('raise: operator-erhaltend, Floor-Maximum, nie Downgrade', () => {
+    expect(raise('^2.3.0', '^2.4.16')).toBe('^2.4.16'); // hochgezogen, ^ bleibt
+    expect(raise('^2.5.0', '^2.4.16')).toBe('^2.5.0'); // current höher → bleibt (kein Downgrade)
+    expect(raise('~1.2.0', '^1.5.0')).toBe('~1.5.0'); // ~ bleibt erhalten
+    expect(raise('>=2.0.0', '^3.0.0')).toBe('>=3.0.0'); // >= bleibt erhalten
+    expect(raise('^1.0.0', '^1.0.0')).toBe('^1.0.0'); // idempotent (gleicher Floor)
+    expect(raise('catalog:', '^1.0.0')).toBe('catalog:'); // Protokoll → unverändert
+    expect(raise('*', '^1.0.0')).toBe('*'); // nicht vergleichbar → unverändert
+    expect(raise('^1.2.3+build.5', '^1.0.0')).toBe('^1.2.3+build.5'); // höher → unverändert (Build-Meta bleibt)
+    // Compound-/führende-`<`-Ranges sind nicht eindeutig anhebbar → sauber den (Pin-)target nutzen:
+    expect(raise('>=2.0.0 <3.0.0', '^3.5.0')).toBe('^3.5.0');
+    expect(raise('<3.0.0 >=2.0.0', '^2.5.0')).toBe('^2.5.0');
+  });
+});
+
+describe('computePkgPlan Catalog-Modus (D9 WP2)', () => {
+  const biome = VERSIONS['@biomejs/biome']; // Pin, per Konvention `^x.y.z`
+  const only = (dep: string) => ({ only: { devDeps: new Set([dep]) } });
+  const empty = { default: {}, named: {} };
+
+  test('fehlender Eintrag: legt Catalog-Eintrag an + stellt devDep auf catalog: um', () => {
+    const ctx = detectContext(
+      project({ name: 'x', devDependencies: { '@biomejs/biome': '^2.3.0' } })
+    );
+    const plan = computePkgPlan(ctx, only('@biomejs/biome'), undefined, empty);
+    expect(plan.catalogEntriesToAdd).toEqual([{ name: '@biomejs/biome', table: null, to: biome }]);
+    expect(plan.devDepsToCatalog).toEqual([
+      { name: '@biomejs/biome', from: '^2.3.0', to: 'catalog:' }
+    ]);
+    expect(plan.devDepsDrift).toEqual([]); // kein literaler Drift im Catalog-Modus
+  });
+
+  test('aktueller Eintrag, literale devDep → nur Switch, kein Drift', () => {
+    const ctx = detectContext(
+      project({ name: 'x', devDependencies: { '@biomejs/biome': '^2.4.16' } })
+    );
+    const plan = computePkgPlan(ctx, only('@biomejs/biome'), undefined, {
+      default: { '@biomejs/biome': biome },
+      named: {}
+    });
+    expect(plan.catalogEntriesToAdd).toEqual([]);
+    expect(plan.catalogEntriesDrift).toEqual([]);
+    expect(plan.devDepsToCatalog).toEqual([
+      { name: '@biomejs/biome', from: '^2.4.16', to: 'catalog:' }
+    ]);
+  });
+
+  test('Eintrag hinter Pin → Drift hebt an (devDep schon catalog:)', () => {
+    const ctx = detectContext(
+      project({ name: 'x', devDependencies: { '@biomejs/biome': 'catalog:' } })
+    );
+    const plan = computePkgPlan(ctx, only('@biomejs/biome'), undefined, {
+      default: { '@biomejs/biome': '^2.0.0' },
+      named: {}
+    });
+    expect(plan.catalogEntriesDrift).toEqual([
+      { name: '@biomejs/biome', table: null, from: '^2.0.0', to: biome }
+    ]);
+    expect(plan.devDepsToCatalog).toEqual([]); // devDep schon korrekt
+  });
+
+  test('Eintrag neuer als Pin → kein Drift', () => {
+    const ctx = detectContext(
+      project({ name: 'x', devDependencies: { '@biomejs/biome': 'catalog:' } })
+    );
+    const plan = computePkgPlan(ctx, only('@biomejs/biome'), undefined, {
+      default: { '@biomejs/biome': '^99.0.0' },
+      named: {}
+    });
+    expect(plan.catalogEntriesDrift).toEqual([]);
+    expect(plan.catalogEntriesToAdd).toEqual([]);
+  });
+
+  test('@urbicon/* bleiben literal (nie in den Catalog)', () => {
+    const ctx = detectContext(project({ name: 'x' }));
+    const plan = computePkgPlan(ctx, only('@urbicon/tsconfig'), undefined, empty);
+    expect(plan.catalogEntriesToAdd).toEqual([]);
+    expect(plan.devDepsToCatalog).toEqual([]);
+    expect(plan.devDepsToAdd).toEqual([
+      { name: '@urbicon/tsconfig', to: VERSIONS['@urbicon/tsconfig'] }
+    ]);
+  });
+
+  test('gepinnter Dep: kein Switch, kein Eintrag, nur gehalten gemeldet', () => {
+    const ctx = detectContext(
+      project({ name: 'x', devDependencies: { '@biomejs/biome': '^2.3.0' } })
+    );
+    const plan = computePkgPlan(
+      ctx,
+      { ...only('@biomejs/biome'), pinned: new Set(['@biomejs/biome']) },
+      undefined,
+      empty
+    );
+    expect(plan.devDepsPinned.map((c) => c.name)).toContain('@biomejs/biome');
+    expect(plan.catalogEntriesToAdd).toEqual([]);
+    expect(plan.devDepsToCatalog).toEqual([]);
+  });
+
+  test('literale devDep neuer als Pin, Eintrag fehlt → Eintrag = Maximum (kein Downgrade, D9-E)', () => {
+    const ctx = detectContext(
+      project({ name: 'x', devDependencies: { '@biomejs/biome': '^99.0.0' } })
+    );
+    const plan = computePkgPlan(ctx, only('@biomejs/biome'), undefined, empty);
+    expect(plan.catalogEntriesToAdd).toEqual([
+      { name: '@biomejs/biome', table: null, to: '^99.0.0' }
+    ]);
+    expect(plan.devDepsToCatalog).toEqual([
+      { name: '@biomejs/biome', from: '^99.0.0', to: 'catalog:' }
+    ]);
+  });
+
+  test('benannter Catalog (catalogs.svelte) wird genutzt statt des Defaults', () => {
+    const ctx = detectContext(
+      project({ name: 'x', devDependencies: { svelte: '^5', 'svelte-check': '^4.0.0' } })
+    );
+    const plan = computePkgPlan(ctx, only('svelte-check'), undefined, {
+      default: {},
+      named: { svelte: { 'svelte-check': '^4.0.0' } }
+    });
+    expect(plan.devDepsToCatalog).toEqual([
+      { name: 'svelte-check', from: '^4.0.0', to: 'catalog:svelte' }
+    ]);
+    expect(plan.catalogEntriesToAdd).toEqual([]); // schon im benannten Catalog
+  });
+
+  test('devDep catalog: aber Eintrag fehlt → Eintrag wird ergänzt (repariert kaputten Zustand)', () => {
+    const ctx = detectContext(
+      project({ name: 'x', devDependencies: { '@biomejs/biome': 'catalog:' } })
+    );
+    const plan = computePkgPlan(ctx, only('@biomejs/biome'), undefined, empty);
+    expect(plan.catalogEntriesToAdd).toEqual([{ name: '@biomejs/biome', table: null, to: biome }]);
+    expect(plan.devDepsToCatalog).toEqual([]);
+    expect(plan.devDepsToAdd).toEqual([]);
+  });
+
+  test('Eintrag älter als literale devDep → Drift aufs Maximum + Switch gleichzeitig (D9-E)', () => {
+    const ctx = detectContext(
+      project({ name: 'x', devDependencies: { '@biomejs/biome': '^2.6.0' } })
+    );
+    const plan = computePkgPlan(ctx, only('@biomejs/biome'), undefined, {
+      default: { '@biomejs/biome': '^2.0.0' },
+      named: {}
+    });
+    // Eintrag ^2.0.0 hinter Pin UND hinter der literalen devDep ^2.6.0 → auf das Maximum heben.
+    expect(plan.catalogEntriesDrift).toEqual([
+      { name: '@biomejs/biome', table: null, from: '^2.0.0', to: '^2.6.0' }
+    ]);
+    expect(plan.devDepsToCatalog).toEqual([
+      { name: '@biomejs/biome', from: '^2.6.0', to: 'catalog:' }
+    ]);
+  });
+
+  test('Invariante: jeder catalog:-devDep im Plan hat einen vorhandenen/geplanten Eintrag', () => {
+    const ctx = detectContext(
+      project({ name: 'x', devDependencies: { '@biomejs/biome': '^2.3.0', lefthook: 'catalog:' } })
+    );
+    const plan = computePkgPlan(ctx, {}, 'root', empty);
+    const planned = new Set(plan.catalogEntriesToAdd.map((c) => c.name));
+    const switched = [
+      ...plan.devDepsToCatalog,
+      ...plan.devDepsToAdd.filter((c) => c.to.startsWith('catalog:'))
+    ];
+    for (const ch of switched) expect(planned.has(ch.name)).toBe(true);
   });
 });
 
