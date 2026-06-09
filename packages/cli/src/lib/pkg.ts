@@ -243,9 +243,11 @@ function sortKeys(obj: Record<string, string>): Record<string, string> {
 }
 
 /**
- * Wendet den Plan auf das pkg-Objekt an. Fehlende Scripts/devDeps und Versions-Drift (Projekt hinter
- * dem Pin) werden immer angewandt — `satisfiesPin` garantiert, dass das nie ein Downgrade ist, daher
+ * Wendet den Plan auf das pkg-Objekt an (Scripts + devDeps des jeweiligen Pakets). Fehlende
+ * Scripts/devDeps, Versions-Drift und der `catalog:`-Switch werden immer angewandt — `satisfiesPin`
+ * garantiert, dass das nie ein Downgrade ist (der Switch wird vom Catalog-Eintrag gedeckt), daher
  * braucht das kein `--force`. Nur Script-Drift kann eine bewusste Anpassung sein → `--force`.
+ * Die Catalog-EINTRÄGE selbst schreibt `applyCatalogEntries` ins Root-pkg (sie leben nur dort).
  * Gibt true zurück, wenn geändert.
  */
 export function mutatePkg(pkg: PackageJson, plan: PkgPlan, force: boolean): boolean {
@@ -266,6 +268,12 @@ export function mutatePkg(pkg: PackageJson, plan: PkgPlan, force: boolean): bool
     devDeps[ch.name] = ch.to;
     changed = true;
   }
+  // Catalog-Modus: literale devDep auf `catalog:`/`catalog:<name>` umstellen (Eintrag von
+  // applyCatalogEntries gedeckt) — kein Downgrade, daher ohne --force.
+  for (const ch of plan.devDepsToCatalog) {
+    devDeps[ch.name] = ch.to;
+    changed = true;
+  }
   if (force) {
     for (const ch of plan.scriptsDrift) {
       scripts[ch.name] = ch.to;
@@ -278,4 +286,47 @@ export function mutatePkg(pkg: PackageJson, plan: PkgPlan, force: boolean): bool
     if (Object.keys(devDeps).length > 0) pkg.devDependencies = sortKeys(devDeps);
   }
   return changed;
+}
+
+/**
+ * Trägt die Catalog-Einträge (add + drift) des Plans in das mutable `catalog`-Arbeitsobjekt ein.
+ * Dieses wird über alle Paket-Patches eines Laufs geteilt, sodass die Akkumulation über mehrere
+ * Svelte-Pakete hinweg greift (D9-E): ein zweites Paket sieht den vom ersten angelegten/angehobenen
+ * Eintrag und hebt nur weiter an, statt ihn zu überschreiben. `wireCatalog` schreibt das Ergebnis am
+ * Ende ins Root-pkg. Gibt true zurück, wenn ein Eintrag geändert wurde.
+ */
+export function applyCatalogEntries(catalog: CatalogTables | null, plan: PkgPlan): boolean {
+  const entries = [...plan.catalogEntriesToAdd, ...plan.catalogEntriesDrift];
+  if (entries.length === 0 || catalog === null) return false;
+  for (const ch of entries) {
+    if (ch.table === null) {
+      catalog.default[ch.name] = ch.to;
+    } else {
+      const table = catalog.named[ch.table] ?? {};
+      table[ch.name] = ch.to;
+      catalog.named[ch.table] = table;
+    }
+  }
+  return true;
+}
+
+/**
+ * Verdrahtet die (ggf. neu befüllten) Catalog-Tabellen zurück in `rootPkg.workspaces` — Bun-Catalogs
+ * leben ausschließlich in der Workspace-Root. Zeigt eine Tabelle bereits auf das Consumer-Objekt, ist
+ * das ein No-op (gleiche Referenz); ein neu angelegter Default-Catalog wird hier eingehängt. Leere
+ * Tabellen bleiben außen vor, damit kein leerer `catalog: {}`-Block entsteht.
+ */
+export function wireCatalog(rootPkg: PackageJson, catalog: CatalogTables): void {
+  const ws = (
+    typeof rootPkg.workspaces === 'object' && !Array.isArray(rootPkg.workspaces)
+      ? rootPkg.workspaces
+      : {}
+  ) as { catalog?: Record<string, string>; catalogs?: Record<string, Record<string, string>> };
+  rootPkg.workspaces = ws;
+  if (Object.keys(catalog.default).length > 0) ws.catalog = catalog.default;
+  for (const [name, table] of Object.entries(catalog.named)) {
+    if (Object.keys(table).length === 0) continue;
+    ws.catalogs ??= {};
+    ws.catalogs[name] = table;
+  }
 }

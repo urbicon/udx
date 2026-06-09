@@ -44,10 +44,16 @@ function project(pkg: Record<string, unknown>): string {
   return dir;
 }
 
-/** Legt ein Monorepo an: Root + packages/api (TS, mit src/) + packages/ui (Svelte). `objectForm` nutzt `workspaces.packages`. */
-function monorepo(objectForm = false): string {
+/**
+ * Legt ein Monorepo an: Root + packages/api (TS, mit src/) + packages/ui (Svelte). `objectForm` nutzt
+ * `workspaces.packages`; `catalog` (impliziert Objekt-Form) hängt einen Bun-Catalog an = Catalog-Modus.
+ */
+function monorepo(objectForm = false, catalog?: Record<string, string>): string {
   const dir = mkdtempSync(join(tmpdir(), 'udx-mono-'));
-  const workspaces = objectForm ? { packages: ['packages/*'] } : ['packages/*'];
+  const workspaces =
+    objectForm || catalog
+      ? { packages: ['packages/*'], ...(catalog ? { catalog } : {}) }
+      : ['packages/*'];
   writeFileSync(join(dir, 'package.json'), JSON.stringify({ name: 'root', workspaces }));
   mkdirSync(join(dir, 'packages/api/src'), { recursive: true }); // src/ ⇒ TS-Paket
   writeFileSync(join(dir, 'packages/api/package.json'), JSON.stringify({ name: 'api' }));
@@ -947,6 +953,163 @@ describe('computePkgPlan Catalog-Modus (D9 WP2)', () => {
       ...plan.devDepsToAdd.filter((c) => c.to.startsWith('catalog:'))
     ];
     for (const ch of switched) expect(planned.has(ch.name)).toBe(true);
+  });
+});
+
+describe('Catalog-Writes via runHarness (D9 WP3)', () => {
+  const readPkg = (dir: string, rel = 'package.json') =>
+    JSON.parse(readFileSync(join(dir, rel), 'utf8'));
+
+  test('Catalog-Monorepo init: Root führt Tool-Deps als catalog: + pflegt die Einträge', () => {
+    const dir = monorepo(true, {}); // leerer Default-Catalog ⇒ Catalog-Modus
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    const root = readPkg(dir);
+    expect(root.devDependencies['@biomejs/biome']).toBe('catalog:');
+    expect(root.devDependencies.typescript).toBe('catalog:');
+    expect(root.workspaces.catalog['@biomejs/biome']).toBe(VERSIONS['@biomejs/biome']);
+    expect(root.workspaces.catalog.typescript).toBe(VERSIONS.typescript);
+    // @urbicon/* bleiben literal (D9-D), nie im Catalog:
+    expect(root.devDependencies['@urbicon/tsconfig']).toBe(VERSIONS['@urbicon/tsconfig']);
+    expect(root.workspaces.catalog['@urbicon/tsconfig']).toBeUndefined();
+    // workspaces.packages bleibt intakt:
+    expect(root.workspaces.packages).toEqual(['packages/*']);
+  });
+
+  test('Atomarität: jeder catalog:-devDep hat einen Catalog-Eintrag (bun install würde auflösen)', () => {
+    const dir = monorepo(true, {});
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    const root = readPkg(dir);
+    const cat: Record<string, string> = root.workspaces.catalog ?? {};
+    const named: Record<string, Record<string, string>> = root.workspaces.catalogs ?? {};
+    for (const p of [root, readPkg(dir, 'packages/ui/package.json')]) {
+      for (const [name, spec] of Object.entries(p.devDependencies ?? {})) {
+        if (spec === 'catalog:') expect(cat[name]).toBeDefined();
+        else if (typeof spec === 'string' && spec.startsWith('catalog:'))
+          expect(named[spec.slice('catalog:'.length)]?.[name]).toBeDefined();
+      }
+    }
+  });
+
+  test('Svelte-Paket führt Svelte-Deps als catalog:, Eintrag im Root-Catalog; api ohne devDeps', () => {
+    const dir = monorepo(true, {});
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    expect(readPkg(dir, 'packages/ui/package.json').devDependencies['svelte-check']).toBe(
+      'catalog:'
+    );
+    expect(readPkg(dir).workspaces.catalog['svelte-check']).toBe(VERSIONS['svelte-check']);
+    expect(readPkg(dir, 'packages/api/package.json').devDependencies).toBeUndefined(); // Decision A
+  });
+
+  test('zwei Svelte-Pakete, unterschiedliche Versionen → Catalog = Maximum, kein Downgrade', () => {
+    const dir = monorepo(true, {});
+    writeFileSync(
+      join(dir, 'packages/ui/package.json'),
+      JSON.stringify({ name: 'ui', devDependencies: { svelte: '^5', 'svelte-check': '^4.0.0' } })
+    );
+    mkdirSync(join(dir, 'packages/admin'), { recursive: true });
+    writeFileSync(
+      join(dir, 'packages/admin/package.json'),
+      JSON.stringify({
+        name: 'admin',
+        devDependencies: { svelte: '^5', 'svelte-check': '^99.0.0' }
+      })
+    );
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    // Catalog = Maximum über beide Pakete (^99.0.0) — kein Downgrade für admin:
+    expect(readPkg(dir).workspaces.catalog['svelte-check']).toBe('^99.0.0');
+    expect(readPkg(dir, 'packages/ui/package.json').devDependencies['svelte-check']).toBe(
+      'catalog:'
+    );
+    expect(readPkg(dir, 'packages/admin/package.json').devDependencies['svelte-check']).toBe(
+      'catalog:'
+    );
+  });
+
+  test('Single-Package mit Catalog: devDeps → catalog:, Einträge gepflegt', () => {
+    const dir = project({
+      name: 'solo',
+      workspaces: { catalog: {} },
+      devDependencies: { '@biomejs/biome': '^2.0.0' }
+    });
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    const pkg = readPkg(dir);
+    expect(pkg.devDependencies['@biomejs/biome']).toBe('catalog:');
+    expect(pkg.workspaces.catalog['@biomejs/biome']).toBe(VERSIONS['@biomejs/biome']);
+  });
+
+  test('dry-run im Catalog-Modus schreibt nichts', () => {
+    const dir = monorepo(true, {});
+    const before = readFileSync(join(dir, 'package.json'), 'utf8');
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: true });
+    expect(readFileSync(join(dir, 'package.json'), 'utf8')).toBe(before);
+  });
+
+  test('zweiter sync ist idempotent (Catalog-Modus, Root + Paket)', () => {
+    const dir = monorepo(true, {});
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    const before = readFileSync(join(dir, 'package.json'), 'utf8');
+    const beforeUi = readFileSync(join(dir, 'packages/ui/package.json'), 'utf8');
+    runHarness('sync', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    expect(readFileSync(join(dir, 'package.json'), 'utf8')).toBe(before);
+    expect(readFileSync(join(dir, 'packages/ui/package.json'), 'utf8')).toBe(beforeUi);
+  });
+
+  test('Array-Form-Monorepo bleibt literal (kein Catalog möglich), Gap trotzdem geschlossen', () => {
+    const dir = monorepo(); // Array-Form, kein Catalog
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    const root = readPkg(dir);
+    expect(root.devDependencies['@biomejs/biome']).toBe(VERSIONS['@biomejs/biome']); // literal
+    expect(root.workspaces.catalog).toBeUndefined();
+    expect(readPkg(dir, 'packages/ui/package.json').devDependencies['svelte-check']).toBe(
+      VERSIONS['svelte-check']
+    ); // literal je Paket → Gap geschlossen ohne Catalog
+  });
+
+  test('benannter Consumer-Catalog wird genutzt (catalog:svelte); fremde Einträge bleiben', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'udx-named-'));
+    // Default-Catalog mit einem unmanaged Eintrag (react) + benannter svelte-Catalog (svelte-check).
+    writeFileSync(
+      join(dir, 'package.json'),
+      JSON.stringify({
+        name: 'root',
+        workspaces: {
+          packages: ['packages/*'],
+          catalog: { react: '^18.0.0' },
+          catalogs: { svelte: { 'svelte-check': '^4.0.0' } }
+        }
+      })
+    );
+    mkdirSync(join(dir, 'packages/ui'), { recursive: true });
+    writeFileSync(
+      join(dir, 'packages/ui/package.json'),
+      JSON.stringify({ name: 'ui', devDependencies: { svelte: '^5' } })
+    );
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    const root = readPkg(dir);
+    // svelte-check wird im BENANNTEN Catalog gepflegt (nicht in den Default verschoben):
+    expect(root.workspaces.catalogs.svelte['svelte-check']).toBe(VERSIONS['svelte-check']);
+    expect(root.workspaces.catalog['svelte-check']).toBeUndefined();
+    expect(readPkg(dir, 'packages/ui/package.json').devDependencies['svelte-check']).toBe(
+      'catalog:svelte'
+    );
+    // Fremder, unmanaged Eintrag bleibt unberührt:
+    expect(root.workspaces.catalog.react).toBe('^18.0.0');
+  });
+
+  test('gepinnter Dep bleibt im Catalog-Modus literal (kein Switch, kein Catalog-Eintrag)', () => {
+    const dir = monorepo(true, {});
+    writeFileSync(
+      join(dir, '.udx.json'),
+      JSON.stringify({ ...emptyManifest(), pinned: { '@biomejs/biome': '^2.0.0' } })
+    );
+    const root0 = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+    root0.devDependencies = { '@biomejs/biome': '^2.0.0' };
+    writeFileSync(join(dir, 'package.json'), JSON.stringify(root0));
+    runHarness('sync', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    const root = readPkg(dir);
+    expect(root.devDependencies['@biomejs/biome']).toBe('^2.0.0'); // gehalten, nicht catalog:
+    expect(root.workspaces.catalog['@biomejs/biome']).toBeUndefined(); // kein Eintrag
+    expect(root.devDependencies.typescript).toBe('catalog:'); // ungepinnter Tool-Dep ist catalog:
   });
 });
 

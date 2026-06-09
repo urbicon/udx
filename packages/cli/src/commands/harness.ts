@@ -8,13 +8,21 @@ import {
   resolveSelection,
   type Selection
 } from '../lib/capabilities.ts';
+import { type CatalogTables, readCatalogTables } from '../lib/catalog.ts';
 import { c } from '../lib/colors.ts';
 import { detectContext, type PackageJson, type ProjectContext } from '../lib/detect.ts';
 import { formatDiff } from '../lib/diff.ts';
-import { abs, exists, readJson, readText, writeJson } from '../lib/fs.ts';
+import { abs, exists, readText, writeJson } from '../lib/fs.ts';
 import { log, reportAction } from '../lib/log.ts';
 import { MANIFEST_FILE, type Manifest, readManifest, writeManifest } from '../lib/manifest.ts';
-import { computePkgPlan, type DepTier, mutatePkg, type PkgSet } from '../lib/pkg.ts';
+import {
+  applyCatalogEntries,
+  computePkgPlan,
+  type DepTier,
+  mutatePkg,
+  type PkgSet,
+  wireCatalog
+} from '../lib/pkg.ts';
 import { CLI_VERSION } from '../lib/versions.ts';
 import { detectWiring, type WiringState, wiringSkipDeps } from '../lib/wiring.ts';
 import { isTypeScriptPackage, resolveWorkspaces } from '../lib/workspace.ts';
@@ -135,32 +143,72 @@ function ensurePackageJson(cwd: string, dryRun: boolean): void {
   });
 }
 
-/** Patcht package.json; gibt zurück, ob installierbare Änderungen (neue/angehobene Deps oder Scripts) geschrieben wurden. */
+/** Gemeinsame Eingaben für alle `patchPkg`-Aufrufe eines Laufs (Root + Svelte-Pakete). */
+interface PatchShared {
+  dryRun: boolean;
+  force: boolean;
+  declined: DeclinedSets;
+  only: PkgSet | undefined;
+  pinned: ReadonlySet<string>;
+  /** Selbstverwaltete @urbicon-Preset-Deps (Verdrahtung) — nicht ergänzen. */
+  wiringSkip: ReadonlySet<string>;
+  /**
+   * Mutables Catalog-Arbeitsobjekt des Consumers (aus dem Root-pkg gelesen); `null` ⇒ literal-Modus
+   * (D9-A). Die Einträge aller Patches sammeln sich hier (Akkumulation über Pakete) und werden vom
+   * Caller per `wireCatalog` einmal ins Root-pkg verdrahtet.
+   */
+  catalog: CatalogTables | null;
+}
+
+interface PatchResult {
+  /** Neue/angehobene Deps, Scripts oder Catalog-Änderungen → `bun install` sinnvoll. */
+  installable: boolean;
+  /** Das Ziel-pkg (Root oder Sub-Paket) wurde mutiert → vom Caller schreiben. */
+  targetChanged: boolean;
+  /** Das geteilte Root-pkg (Catalog-Einträge) wurde mutiert → vom Caller einmal schreiben. */
+  rootCatalogChanged: boolean;
+}
+
+const NO_PATCH: PatchResult = {
+  installable: false,
+  targetChanged: false,
+  rootCatalogChanged: false
+};
+
+/**
+ * Plant die package.json-Änderungen eines Pakets und wendet sie **in-memory** an: Scripts/devDeps am
+ * `targetPkg`, Catalog-Einträge am geteilten `s.catalog`-Arbeitsobjekt (Bun-Catalogs leben nur in der
+ * Root). Schreibt NICHT — der Caller persistiert `targetPkg` je Paket und verdrahtet den Catalog per
+ * `wireCatalog` einmal ins Root-pkg, damit ein `catalog:`-devDep nie ohne seinen Eintrag entsteht.
+ * `tier`/`label` steuern Platzierung und Überschrift.
+ */
 function patchPkg(
   ctx: ProjectContext,
-  dryRun: boolean,
-  force: boolean,
-  declined: DeclinedSets,
-  only: PkgSet | undefined,
-  pinned: ReadonlySet<string>,
-  /** Selbstverwaltete @urbicon-Preset-Deps (Verdrahtung) — nicht ergänzen. */
-  wiringSkip: ReadonlySet<string>,
-  /** Platzierungs-Tier (Monorepo): `root` am Root, `svelte` je Svelte-Paket; weggelassen = alles (Single-Package). */
+  targetPkg: PackageJson,
+  s: PatchShared,
   tier?: DepTier,
-  /** Überschrift der package.json-Sektion (im Monorepo der Paketpfad). */
   label = 'package.json'
-): boolean {
+): PatchResult {
   const plan = computePkgPlan(
     ctx,
     {
-      skip: { scripts: declined.scripts, devDeps: new Set([...declined.devDeps, ...wiringSkip]) },
-      pinned,
-      ...(only ? { only } : {})
+      skip: {
+        scripts: s.declined.scripts,
+        devDeps: new Set([...s.declined.devDeps, ...s.wiringSkip])
+      },
+      pinned: s.pinned,
+      ...(s.only ? { only: s.only } : {})
     },
-    tier
+    tier,
+    s.catalog
   );
-  // Auto = wird ohne --force angewandt (fehlende ergänzen + sicheres Anheben hinter dem Pin).
-  const auto = plan.scriptsToAdd.length + plan.devDepsToAdd.length + plan.devDepsDrift.length;
+  // Auto = wird ohne --force angewandt (fehlende ergänzen, sicheres Anheben, Catalog-Pflege + Switch).
+  const catalogChanges =
+    plan.catalogEntriesToAdd.length +
+    plan.catalogEntriesDrift.length +
+    plan.devDepsToCatalog.length;
+  const auto =
+    plan.scriptsToAdd.length + plan.devDepsToAdd.length + plan.devDepsDrift.length + catalogChanges;
   const scriptDrift = plan.scriptsDrift.length;
   const held = plan.devDepsPinned.length;
 
@@ -169,7 +217,7 @@ function patchPkg(
 
   if (auto === 0 && scriptDrift === 0 && held === 0) {
     log.skip('Scripts & devDeps vollständig');
-    return false;
+    return NO_PATCH;
   }
 
   for (const ch of plan.scriptsToAdd) log.info(`${c.green('+ script')} ${ch.name}`);
@@ -178,24 +226,38 @@ function patchPkg(
   for (const ch of plan.devDepsDrift) {
     log.info(`${c.cyan('↑ devDep')} ${ch.name} ${ch.from} → ${ch.to}`);
   }
+  // Catalog-Modus (D9): devDep auf catalog: umstellen, Eintrag anlegen/anheben.
+  for (const ch of plan.devDepsToCatalog) {
+    log.info(`${c.cyan('~ devDep')} ${ch.name} ${ch.from} → ${ch.to}`);
+  }
+  for (const ch of plan.catalogEntriesToAdd) {
+    const where = ch.table ? c.gray(` (catalogs.${ch.table})`) : '';
+    log.info(`${c.green('+ catalog')} ${ch.name}@${ch.to}${where}`);
+  }
+  for (const ch of plan.catalogEntriesDrift) {
+    const where = ch.table ? c.gray(` (catalogs.${ch.table})`) : '';
+    log.info(`${c.cyan('↑ catalog')} ${ch.name} ${ch.from} → ${ch.to}${where}`);
+  }
   for (const ch of plan.devDepsPinned) {
     const at = ch.from ?? '(nicht installiert)';
     log.skip(`devDep ${ch.name} gehalten bei ${at} (lösen: udx unpin ${ch.name})`);
   }
   for (const ch of plan.scriptsDrift) {
-    if (force) log.info(`${c.yellow('~ script')} ${ch.name}`);
+    if (s.force) log.info(`${c.yellow('~ script')} ${ch.name}`);
     else log.warn(`script ${ch.name} weicht ab (bleibt; --force überschreibt)`);
   }
 
-  if (dryRun) return false;
-  // Nichts tatsächlich Schreibbares (z. B. nur gehaltene Deps gemeldet) → kein Datei-Roundtrip.
-  if (auto === 0 && !(force && scriptDrift > 0)) return false;
-  const pkg = readJson<PackageJson>(abs(ctx.cwd, 'package.json'));
-  const changed = mutatePkg(pkg, plan, force);
-  if (changed) writeJson(abs(ctx.cwd, 'package.json'), pkg);
-  // `bun install` ist nur bei neuen/angehobenen Deps oder neuen Scripts (auto) sinnvoll —
-  // reiner Script-Drift-Force ändert keine Installationsmenge.
-  return changed && auto > 0;
+  if (s.dryRun) return NO_PATCH;
+  // Nichts tatsächlich Schreibbares (z. B. nur gehaltene Deps gemeldet) → kein Mutieren.
+  if (auto === 0 && !(s.force && scriptDrift > 0)) return NO_PATCH;
+  const targetChanged = mutatePkg(targetPkg, plan, s.force);
+  const rootCatalogChanged = applyCatalogEntries(s.catalog, plan);
+  // `bun install` ist nur bei auto-Änderungen sinnvoll (reiner Script-Drift-Force ändert die Menge nicht).
+  return {
+    installable: (targetChanged || rootCatalogChanged) && auto > 0,
+    targetChanged,
+    rootCatalogChanged
+  };
 }
 
 function printFooter(
@@ -409,32 +471,42 @@ export function runHarness(
   // Monorepo: Root trägt repo-globale + TS-Tools (ein svelte-Root = alles); jedes Svelte-Paket
   // bekommt sein Svelte-Werkzeug (Deps + svelte-flavored lint/format) — schließt den
   // Svelte-Monorepo-Gap (D9-C). Single-Package: ein Aufruf ohne Tier (= alles, bisheriges Verhalten).
+  // Catalog-Modus (D9-A): das Root-pkg wird einmal gelesen, alle Patches mutieren das gemeinsame
+  // `catalog`-Arbeitsobjekt (Akkumulation über Pakete) und das Root-pkg, das am Ende einmal geschrieben
+  // wird (per `wireCatalog`) — so entsteht nie ein `catalog:`-devDep ohne seinen Eintrag.
   const rootTier: DepTier | undefined = isMonorepo && !ctx.svelte ? 'root' : undefined;
-  const pinnedSet = new Set(Object.keys(manifest.pinned));
-  let pkgChanged = patchPkg(
-    ctx,
-    flags.dryRun,
-    flags.force,
+  // Die pkg-Objekte sind bereits via detectContext gelesen (`{}` wenn die Datei fehlt) — wiederverwenden
+  // statt erneut von der Platte zu lesen (robust auch im Dry-Run ohne package.json).
+  const rootPkg = ctx.pkg;
+  const shared: PatchShared = {
+    dryRun: flags.dryRun,
+    force: flags.force,
     declined,
-    onlyPkg,
-    pinnedSet,
+    only: onlyPkg,
+    pinned: new Set(Object.keys(manifest.pinned)),
     wiringSkip,
-    rootTier
-  );
+    catalog: readCatalogTables(rootPkg)
+  };
+
+  let pkgChanged = false; // installierbare Änderungen (für installPlan)
+  let rootDirty = false; // Root-pkg muss geschrieben werden (Scripts/devDeps oder Catalog)
+
+  const rootRes = patchPkg(ctx, rootPkg, shared, rootTier);
+  pkgChanged ||= rootRes.installable;
+  rootDirty ||= rootRes.targetChanged || rootRes.rootCatalogChanged;
+
   for (const { ws, pkgCtx } of tsPkgs) {
     if (!pkgCtx.svelte) continue;
-    const subChanged = patchPkg(
-      pkgCtx,
-      flags.dryRun,
-      flags.force,
-      declined,
-      onlyPkg,
-      pinnedSet,
-      wiringSkip,
-      'svelte',
-      `${ws}/package.json`
-    );
-    pkgChanged = pkgChanged || subChanged;
+    const res = patchPkg(pkgCtx, pkgCtx.pkg, shared, 'svelte', `${ws}/package.json`);
+    if (res.targetChanged && !flags.dryRun) writeJson(abs(pkgCtx.cwd, 'package.json'), pkgCtx.pkg);
+    pkgChanged ||= res.installable;
+    rootDirty ||= res.rootCatalogChanged;
+  }
+
+  // Akkumulierte Catalog-Einträge ins Root-pkg verdrahten und das Root-pkg genau einmal schreiben.
+  if (rootDirty && !flags.dryRun) {
+    if (shared.catalog) wireCatalog(rootPkg, shared.catalog);
+    writeJson(abs(ctx.cwd, 'package.json'), rootPkg);
   }
 
   // Interaktiv nur Root-Konflikte: package-scoped Bausteine sind create-only (s. Guard in
