@@ -5,7 +5,13 @@ import { detectContext, type ProjectContext } from '../lib/detect.ts';
 import { abs, exists, readText } from '../lib/fs.ts';
 import { log } from '../lib/log.ts';
 import { type Manifest, readManifest } from '../lib/manifest.ts';
-import { canonicalDevDeps, canonicalScripts, computePkgPlan } from '../lib/pkg.ts';
+import {
+  canonicalDevDeps,
+  canonicalScripts,
+  computePkgPlan,
+  type DepTier,
+  type PkgPlan
+} from '../lib/pkg.ts';
 import { detectWiring, wiringSkipDeps } from '../lib/wiring.ts';
 import { isTypeScriptPackage, resolveWorkspaces } from '../lib/workspace.ts';
 
@@ -90,6 +96,47 @@ function fileRows(
   return rows;
 }
 
+/** package.json-Plan → Status-Zeilen (Prefix = Paketpfad im Monorepo). */
+function pkgRows(plan: PkgPlan, prefix = ''): Row[] {
+  const rows: Row[] = [];
+  for (const ch of plan.devDepsToAdd)
+    rows.push({
+      state: 'missing',
+      label: `${prefix}${ch.name}`,
+      detail: `fehlt → ${ch.to}`,
+      cmd: 'udx sync'
+    });
+  for (const ch of plan.devDepsDrift)
+    rows.push({
+      state: 'behind',
+      label: `${prefix}${ch.name}`,
+      detail: `${ch.from} → ${ch.to}`,
+      cmd: 'udx sync'
+    });
+  for (const ch of plan.scriptsToAdd)
+    rows.push({
+      state: 'missing',
+      label: `${prefix}${ch.name} (script)`,
+      detail: 'fehlt',
+      cmd: 'udx sync'
+    });
+  for (const ch of plan.scriptsDrift)
+    rows.push({
+      state: 'customized',
+      label: `${prefix}${ch.name} (script)`,
+      detail: 'angepasst',
+      cmd: 'udx sync --force'
+    });
+  for (const ch of plan.devDepsPinned)
+    rows.push({
+      state: 'pinned',
+      label: `${prefix}${ch.name}`,
+      detail: `gehalten bei ${ch.from ?? '(nicht installiert)'}`,
+      cmd: `udx unpin ${ch.name}`
+    });
+  return rows;
+}
+
 /** Erzeugt den vollständigen Statusbericht — wiederverwendet dieselben Engines wie init/sync/doctor. */
 export function buildReport(flags: StatusFlags): {
   ctx: ProjectContext;
@@ -122,44 +169,40 @@ export function buildReport(flags: StatusFlags): {
   const dateien = fileRows(ctx, declined.files, manifest);
 
   // package.json: nur das Handlungsrelevante als Zeile, der Rest als „in sync"-Zähler.
-  const plan = computePkgPlan(ctx, {
-    skip: { scripts: declined.scripts, devDeps: skipDeps },
-    pinned
-  });
-  const pkg: Row[] = [];
-  for (const ch of plan.devDepsToAdd)
-    pkg.push({ state: 'missing', label: ch.name, detail: `fehlt → ${ch.to}`, cmd: 'udx sync' });
-  for (const ch of plan.devDepsDrift)
-    pkg.push({ state: 'behind', label: ch.name, detail: `${ch.from} → ${ch.to}`, cmd: 'udx sync' });
-  for (const ch of plan.scriptsToAdd)
-    pkg.push({ state: 'missing', label: `${ch.name} (script)`, detail: 'fehlt', cmd: 'udx sync' });
-  for (const ch of plan.scriptsDrift)
-    pkg.push({
-      state: 'customized',
-      label: `${ch.name} (script)`,
-      detail: 'angepasst',
-      cmd: 'udx sync --force'
-    });
-  for (const ch of plan.devDepsPinned)
-    pkg.push({
-      state: 'pinned',
-      label: ch.name,
-      detail: `gehalten bei ${ch.from ?? '(nicht installiert)'}`,
-      cmd: `udx unpin ${ch.name}`
-    });
+  // Monorepo: Root trägt das root-Tier (svelte-Root = alles); jedes Svelte-Paket sein svelte-Tier (D9-C).
+  const workspaces = resolveWorkspaces(ctx.cwd, ctx.pkg);
+  const isMonorepo = workspaces.length > 0;
+  const sveltePkgs = isMonorepo
+    ? workspaces
+        .map((ws) => ({ ws, pkgCtx: detectContext(abs(ctx.cwd, ws), flags.svelte) }))
+        .filter(({ pkgCtx }) => isTypeScriptPackage(pkgCtx.cwd, pkgCtx.pkg) && pkgCtx.svelte)
+    : [];
+  const rootTier: DepTier | undefined = isMonorepo && !ctx.svelte ? 'root' : undefined;
+  const skipFilter = { skip: { scripts: declined.scripts, devDeps: skipDeps }, pinned };
 
-  // „In sync" = kanonische Scripts/devDeps (ohne abgewählte), die in KEINER Plan-Liste stehen —
-  // direkt gezählt statt arithmetisch, damit kein künftiges Capability-Dep ohne canonical-Pendant still falsch zählt.
+  const plan = computePkgPlan(ctx, skipFilter, rootTier);
+  const pkg: Row[] = pkgRows(plan);
+  let held = plan.devDepsPinned.length;
+  for (const { ws, pkgCtx } of sveltePkgs) {
+    const subPlan = computePkgPlan(pkgCtx, skipFilter, 'svelte');
+    pkg.push(...pkgRows(subPlan, `${ws}/`));
+    held += subPlan.devDepsPinned.length;
+  }
+
+  // „In sync" = kanonische Scripts/devDeps des root-Tiers (ohne abgewählte), die in KEINER Plan-Liste
+  // stehen — direkt gezählt statt arithmetisch, damit kein künftiges Capability-Dep ohne canonical-Pendant
+  // still falsch zählt. (Svelte-Paket-Deps zählen als Handlungsbedarf, nicht in diesen Root-Zähler.)
   const plannedScripts = new Set([...plan.scriptsToAdd, ...plan.scriptsDrift].map((ch) => ch.name));
   const plannedDeps = new Set(
     [...plan.devDepsToAdd, ...plan.devDepsDrift, ...plan.devDepsPinned].map((ch) => ch.name)
   );
   const inSync =
-    Object.keys(canonicalScripts(ctx)).filter(
+    Object.keys(canonicalScripts(ctx, rootTier)).filter(
       (n) => !declined.scripts.has(n) && !plannedScripts.has(n)
     ).length +
-    Object.keys(canonicalDevDeps(ctx)).filter((n) => !skipDeps.has(n) && !plannedDeps.has(n))
-      .length;
+    Object.keys(canonicalDevDeps(ctx, rootTier)).filter(
+      (n) => !skipDeps.has(n) && !plannedDeps.has(n)
+    ).length;
   if (inSync > 0)
     pkg.push({ state: 'sync', label: `${inSync} weitere`, detail: 'Scripts & devDeps in sync' });
 
@@ -188,7 +231,7 @@ export function buildReport(flags: StatusFlags): {
 
   return {
     ctx,
-    held: plan.devDepsPinned.length,
+    held,
     sections: [
       { title: 'Bausteine', rows: bausteine },
       { title: 'Dateien', rows: dateien },

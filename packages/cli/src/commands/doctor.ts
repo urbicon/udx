@@ -6,7 +6,7 @@ import { formatDiff } from '../lib/diff.ts';
 import { abs, exists, readText } from '../lib/fs.ts';
 import { log } from '../lib/log.ts';
 import { hashContent, readManifest } from '../lib/manifest.ts';
-import { computePkgPlan } from '../lib/pkg.ts';
+import { computePkgPlan, type DepTier, type PkgPlan } from '../lib/pkg.ts';
 import { detectWiring, wiringSkipDeps } from '../lib/wiring.ts';
 import { isTypeScriptPackage, resolveWorkspaces } from '../lib/workspace.ts';
 import { FILE_TEMPLATES } from '../templates/index.ts';
@@ -41,6 +41,11 @@ export function runDoctor(flags: DoctorFlags): number {
 
   const workspaces = resolveWorkspaces(ctx.cwd, ctx.pkg);
   const isMonorepo = workspaces.length > 0;
+  // TS-Pakete (Asset-Pakete ohne TS-Code übersprungen) — für package-scoped Dateien UND
+  // die per-Svelte-Paket-package.json-Prüfung (D9-C).
+  const tsPkgs = workspaces
+    .map((ws) => ({ ws, pkgCtx: detectContext(abs(ctx.cwd, ws), flags.svelte) }))
+    .filter(({ pkgCtx }) => isTypeScriptPackage(pkgCtx.cwd, pkgCtx.pkg));
 
   log.plain();
   log.step('Dateien');
@@ -84,9 +89,6 @@ export function runDoctor(flags: DoctorFlags): number {
 
   // Monorepo: package-scoped Bausteine je TS-Paket (Asset-Pakete ohne TS-Code übersprungen).
   // tsconfig ist create-only ⇒ nur Existenz prüfen, kein managed-Drift.
-  const tsPkgs = workspaces
-    .map((ws) => ({ ws, pkgCtx: detectContext(abs(ctx.cwd, ws), flags.svelte) }))
-    .filter(({ pkgCtx }) => isTypeScriptPackage(pkgCtx.cwd, pkgCtx.pkg));
   if (tsPkgs.length > 0) {
     log.plain();
     log.step('Pakete');
@@ -139,19 +141,30 @@ export function runDoctor(flags: DoctorFlags): number {
 
   log.plain();
   log.step('package.json');
-  const plan = computePkgPlan(ctx, {
+  const pkgFilter = {
     skip: { scripts: declined.scripts, devDeps: new Set([...declined.devDeps, ...wiringSkip]) },
     pinned: new Set(Object.keys(manifest.pinned))
-  });
-  if (plan.scriptsToAdd.length === 0) pass('Scripts vollständig');
-  else fail(`fehlende Scripts: ${plan.scriptsToAdd.map((s) => s.name).join(', ')}`);
-  if (plan.devDepsToAdd.length === 0) pass('devDeps vollständig');
-  else fail(`fehlende devDeps: ${plan.devDepsToAdd.map((s) => s.name).join(', ')}`);
-  for (const ch of plan.scriptsDrift) warn(`script ${ch.name} weicht ab`);
-  for (const ch of plan.devDepsDrift)
-    warn(`devDep ${ch.name} ${ch.from ?? '?'} → ${ch.to} (sync zieht hoch)`);
-  for (const ch of plan.devDepsPinned)
-    log.skip(`devDep ${ch.name} gehalten bei ${ch.from ?? '(nicht installiert)'}`);
+  };
+  // Root-Tier (svelte-Root = alles) + je Svelte-Paket das svelte-Tier (D9-C); Label kennzeichnet das Paket.
+  const rootTier: DepTier | undefined = isMonorepo && !ctx.svelte ? 'root' : undefined;
+  const pkgPlans: { label: string; plan: PkgPlan }[] = [
+    { label: '', plan: computePkgPlan(ctx, pkgFilter, rootTier) }
+  ];
+  for (const { ws, pkgCtx } of tsPkgs) {
+    if (pkgCtx.svelte)
+      pkgPlans.push({ label: `${ws}: `, plan: computePkgPlan(pkgCtx, pkgFilter, 'svelte') });
+  }
+  for (const { label, plan } of pkgPlans) {
+    if (plan.scriptsToAdd.length === 0) pass(`${label}Scripts vollständig`);
+    else fail(`${label}fehlende Scripts: ${plan.scriptsToAdd.map((s) => s.name).join(', ')}`);
+    if (plan.devDepsToAdd.length === 0) pass(`${label}devDeps vollständig`);
+    else fail(`${label}fehlende devDeps: ${plan.devDepsToAdd.map((s) => s.name).join(', ')}`);
+    for (const ch of plan.scriptsDrift) warn(`${label}script ${ch.name} weicht ab`);
+    for (const ch of plan.devDepsDrift)
+      warn(`${label}devDep ${ch.name} ${ch.from ?? '?'} → ${ch.to} (sync zieht hoch)`);
+    for (const ch of plan.devDepsPinned)
+      log.skip(`${label}devDep ${ch.name} gehalten bei ${ch.from ?? '(nicht installiert)'}`);
+  }
 
   log.plain();
   if (fails > 0) {

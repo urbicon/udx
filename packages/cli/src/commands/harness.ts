@@ -14,7 +14,7 @@ import { formatDiff } from '../lib/diff.ts';
 import { abs, exists, readJson, readText, writeJson } from '../lib/fs.ts';
 import { log, reportAction } from '../lib/log.ts';
 import { MANIFEST_FILE, type Manifest, readManifest, writeManifest } from '../lib/manifest.ts';
-import { computePkgPlan, mutatePkg, type PkgSet } from '../lib/pkg.ts';
+import { computePkgPlan, type DepTier, mutatePkg, type PkgSet } from '../lib/pkg.ts';
 import { CLI_VERSION } from '../lib/versions.ts';
 import { detectWiring, type WiringState, wiringSkipDeps } from '../lib/wiring.ts';
 import { isTypeScriptPackage, resolveWorkspaces } from '../lib/workspace.ts';
@@ -144,20 +144,28 @@ function patchPkg(
   only: PkgSet | undefined,
   pinned: ReadonlySet<string>,
   /** Selbstverwaltete @urbicon-Preset-Deps (Verdrahtung) — nicht ergänzen. */
-  wiringSkip: ReadonlySet<string>
+  wiringSkip: ReadonlySet<string>,
+  /** Platzierungs-Tier (Monorepo): `root` am Root, `svelte` je Svelte-Paket; weggelassen = alles (Single-Package). */
+  tier?: DepTier,
+  /** Überschrift der package.json-Sektion (im Monorepo der Paketpfad). */
+  label = 'package.json'
 ): boolean {
-  const plan = computePkgPlan(ctx, {
-    skip: { scripts: declined.scripts, devDeps: new Set([...declined.devDeps, ...wiringSkip]) },
-    pinned,
-    ...(only ? { only } : {})
-  });
+  const plan = computePkgPlan(
+    ctx,
+    {
+      skip: { scripts: declined.scripts, devDeps: new Set([...declined.devDeps, ...wiringSkip]) },
+      pinned,
+      ...(only ? { only } : {})
+    },
+    tier
+  );
   // Auto = wird ohne --force angewandt (fehlende ergänzen + sicheres Anheben hinter dem Pin).
   const auto = plan.scriptsToAdd.length + plan.devDepsToAdd.length + plan.devDepsDrift.length;
   const scriptDrift = plan.scriptsDrift.length;
   const held = plan.devDepsPinned.length;
 
   log.plain();
-  log.step('package.json');
+  log.step(label);
 
   if (auto === 0 && scriptDrift === 0 && held === 0) {
     log.skip('Scripts & devDeps vollständig');
@@ -326,6 +334,13 @@ export function runHarness(
   // Monorepo: package-scoped Bausteine (tsconfig) laufen je Paket, nicht im Root.
   const workspaces = resolveWorkspaces(ctx.cwd, ctx.pkg);
   const isMonorepo = workspaces.length > 0;
+  // TS-Pakete (Asset-Pakete ohne TS-Code übersprungen) — Quelle für die package-scoped Dateien
+  // UND die per-Paket-package.json-Patches (Svelte-Tier, D9-C).
+  const tsPkgs = isMonorepo
+    ? workspaces
+        .map((ws) => ({ ws, pkgCtx: detectContext(abs(ctx.cwd, ws), flags.svelte) }))
+        .filter(({ pkgCtx }) => isTypeScriptPackage(pkgCtx.cwd, pkgCtx.pkg))
+    : [];
   const baseOpts: ApplyOptions = {
     mode,
     dryRun: flags.dryRun,
@@ -360,27 +375,22 @@ export function runHarness(
 
   // Pro Paket die package-scoped Bausteine (Svelte je Paket erkannt). Asset-Pakete ohne
   // TS-Code werden übersprungen, damit nicht überall unnötige tsconfigs entstehen.
-  if (isMonorepo) {
-    const tsPkgs = workspaces
-      .map((ws) => ({ ws, pkgCtx: detectContext(abs(ctx.cwd, ws), flags.svelte) }))
-      .filter(({ pkgCtx }) => isTypeScriptPackage(pkgCtx.cwd, pkgCtx.pkg));
-    if (tsPkgs.length > 0) {
-      log.plain();
-      log.step('Pakete');
-      for (const { ws, pkgCtx } of tsPkgs) {
-        const pkgResults = applyFiles(
-          pkgCtx.cwd,
-          pkgCtx,
-          { ...baseOpts, scope: 'package' },
-          manifest,
-          new Map(),
-          onlyFiles
-        );
-        for (const r of pkgResults) {
-          reportAction(r.action, `${ws}/${r.dest}`, r.note);
-          if (r.diff) log.block(r.diff);
-          allResults.push({ ...r, dest: `${ws}/${r.dest}` });
-        }
+  if (tsPkgs.length > 0) {
+    log.plain();
+    log.step('Pakete');
+    for (const { ws, pkgCtx } of tsPkgs) {
+      const pkgResults = applyFiles(
+        pkgCtx.cwd,
+        pkgCtx,
+        { ...baseOpts, scope: 'package' },
+        manifest,
+        new Map(),
+        onlyFiles
+      );
+      for (const r of pkgResults) {
+        reportAction(r.action, `${ws}/${r.dest}`, r.note);
+        if (r.diff) log.block(r.diff);
+        allResults.push({ ...r, dest: `${ws}/${r.dest}` });
       }
     }
   }
@@ -396,15 +406,36 @@ export function runHarness(
     reportWiring(wiring);
   }
 
-  const pkgChanged = patchPkg(
+  // Monorepo: Root trägt repo-globale + TS-Tools (ein svelte-Root = alles); jedes Svelte-Paket
+  // bekommt sein Svelte-Werkzeug (Deps + svelte-flavored lint/format) — schließt den
+  // Svelte-Monorepo-Gap (D9-C). Single-Package: ein Aufruf ohne Tier (= alles, bisheriges Verhalten).
+  const rootTier: DepTier | undefined = isMonorepo && !ctx.svelte ? 'root' : undefined;
+  const pinnedSet = new Set(Object.keys(manifest.pinned));
+  let pkgChanged = patchPkg(
     ctx,
     flags.dryRun,
     flags.force,
     declined,
     onlyPkg,
-    new Set(Object.keys(manifest.pinned)),
-    wiringSkip
+    pinnedSet,
+    wiringSkip,
+    rootTier
   );
+  for (const { ws, pkgCtx } of tsPkgs) {
+    if (!pkgCtx.svelte) continue;
+    const subChanged = patchPkg(
+      pkgCtx,
+      flags.dryRun,
+      flags.force,
+      declined,
+      onlyPkg,
+      pinnedSet,
+      wiringSkip,
+      'svelte',
+      `${ws}/package.json`
+    );
+    pkgChanged = pkgChanged || subChanged;
+  }
 
   // Interaktiv nur Root-Konflikte: package-scoped Bausteine sind create-only (s. Guard in
   // templates/index.ts) und können daher nicht in Konflikt geraten.

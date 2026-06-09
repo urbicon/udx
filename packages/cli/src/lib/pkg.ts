@@ -16,30 +16,54 @@ export interface PkgPlan {
   devDepsPinned: PkgChange[];
 }
 
-export function canonicalScripts(ctx: ProjectContext): Record<string, string> {
-  const format = ctx.svelte
-    ? 'biome format --write . && prettier --write "**/*.svelte"'
-    : 'biome format --write .';
-  const lint = ctx.svelte
-    ? 'biome check . && svelte-check --tsconfig ./tsconfig.json'
-    : 'biome check .';
-  return {
-    format,
-    lint,
-    fix: 'biome check --write .',
-    changelog: 'git-cliff --output CHANGELOG.md',
-    bump: 'bash scripts/bump.sh patch',
-    'bump:minor': 'bash scripts/bump.sh minor',
-    'bump:major': 'bash scripts/bump.sh major',
-    prepare: 'lefthook install'
-  };
+/**
+ * Platzierungs-Tier eines Bausteins im Monorepo (D9-C):
+ * - `root`   – repo-globale Tools + TS-Toolchain + nicht-svelte Lint/Format (laufen einmal fürs Repo).
+ * - `svelte` – svelte-Deps + svelte-flavored Lint/Format, je Svelte-Paket (svelte-check braucht die
+ *   Paket-eigene tsconfig).
+ * Kein Tier (Single-Package) = beide kombiniert, exakt das bisherige Verhalten.
+ */
+export type DepTier = 'root' | 'svelte';
+
+const SVELTE_FORMAT = 'biome format --write . && prettier --write "**/*.svelte"';
+const SVELTE_LINT = 'biome check . && svelte-check --tsconfig ./tsconfig.json';
+const BASE_FORMAT = 'biome format --write .';
+const BASE_LINT = 'biome check .';
+
+/** Repo-globale Scripts — laufen einmal fürs ganze Projekt, nie per Sub-Paket. */
+const REPO_GLOBAL_SCRIPTS: Record<string, string> = {
+  fix: 'biome check --write .',
+  changelog: 'git-cliff --output CHANGELOG.md',
+  bump: 'bash scripts/bump.sh patch',
+  'bump:minor': 'bash scripts/bump.sh minor',
+  'bump:major': 'bash scripts/bump.sh major',
+  prepare: 'lefthook install'
+};
+
+export function canonicalScripts(ctx: ProjectContext, tier?: DepTier): Record<string, string> {
+  // svelte-Tier: nur die svelte-flavored Format/Lint (per Svelte-Paket); ohne Svelte leer.
+  if (tier === 'svelte') return ctx.svelte ? { format: SVELTE_FORMAT, lint: SVELTE_LINT } : {};
+  // root-Tier: repo-globale Scripts + nicht-svelte Format/Lint (biome deckt alle Pakete ab).
+  if (tier === 'root') return { format: BASE_FORMAT, lint: BASE_LINT, ...REPO_GLOBAL_SCRIPTS };
+  // Kein Tier (Single-Package): alles, svelte-flavored falls svelte — bisheriges Verhalten.
+  const format = ctx.svelte ? SVELTE_FORMAT : BASE_FORMAT;
+  const lint = ctx.svelte ? SVELTE_LINT : BASE_LINT;
+  return { format, lint, ...REPO_GLOBAL_SCRIPTS };
 }
 
-export function canonicalDevDeps(ctx: ProjectContext): Partial<Record<DepName, string>> {
-  const base: DepName[] = [...TOOL_DEPS, ...URBICON_DEPS];
-  const names = ctx.svelte ? [...base, ...SVELTE_DEPS] : base;
+/** root-Tier devDeps: repo-globale Tools + TS-Toolchain + @urbicon-Presets (alles außer svelte). */
+const ROOT_TIER_DEPS: readonly DepName[] = [...TOOL_DEPS, ...URBICON_DEPS];
+
+export function canonicalDevDeps(
+  ctx: ProjectContext,
+  tier?: DepTier
+): Partial<Record<DepName, string>> {
   const out: Partial<Record<DepName, string>> = {};
-  for (const n of names) out[n] = VERSIONS[n];
+  const add = (names: readonly DepName[]) => {
+    for (const n of names) out[n] = VERSIONS[n];
+  };
+  if (tier === undefined || tier === 'root') add(ROOT_TIER_DEPS);
+  if ((tier === undefined || tier === 'svelte') && ctx.svelte) add(SVELTE_DEPS);
   return out;
 }
 
@@ -87,7 +111,11 @@ export interface PkgFilter {
   pinned?: ReadonlySet<string>;
 }
 
-export function computePkgPlan(ctx: ProjectContext, filter: PkgFilter = {}): PkgPlan {
+export function computePkgPlan(
+  ctx: ProjectContext,
+  filter: PkgFilter = {},
+  tier?: DepTier
+): PkgPlan {
   const plan: PkgPlan = {
     scriptsToAdd: [],
     scriptsDrift: [],
@@ -99,7 +127,7 @@ export function computePkgPlan(ctx: ProjectContext, filter: PkgFilter = {}): Pkg
   const devDeps = ctx.pkg.devDependencies ?? {};
   const { skip, only, pinned } = filter;
 
-  for (const [name, to] of Object.entries(canonicalScripts(ctx))) {
+  for (const [name, to] of Object.entries(canonicalScripts(ctx, tier))) {
     if (only?.scripts && !only.scripts.has(name)) continue;
     if (skip?.scripts?.has(name)) continue;
     const current = scripts[name];
@@ -107,7 +135,7 @@ export function computePkgPlan(ctx: ProjectContext, filter: PkgFilter = {}): Pkg
     else if (current !== to) plan.scriptsDrift.push({ name, to, from: current });
   }
 
-  for (const [name, to] of Object.entries(canonicalDevDeps(ctx))) {
+  for (const [name, to] of Object.entries(canonicalDevDeps(ctx, tier))) {
     if (only?.devDeps && !only.devDeps.has(name)) continue;
     if (skip?.devDeps?.has(name)) continue;
     const current = devDeps[name];

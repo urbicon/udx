@@ -667,6 +667,75 @@ describe('runHarness Orchestrierung', () => {
   });
 });
 
+describe('Per-Paket-Svelte-Tier (D9 WP1)', () => {
+  const readPkg = (dir: string, rel = 'package.json') =>
+    JSON.parse(readFileSync(join(dir, rel), 'utf8'));
+
+  test('Svelte-Sub-Paket bekommt Svelte-Deps + svelte-flavored Scripts (schließt den Gap)', () => {
+    const dir = monorepo(); // nicht-svelte Root, packages/ui = svelte
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    const ui = readPkg(dir, 'packages/ui/package.json');
+    for (const d of SVELTE_DEPS) expect(ui.devDependencies?.[d]).toBeDefined();
+    expect(ui.scripts?.lint).toBe('biome check . && svelte-check --tsconfig ./tsconfig.json');
+    expect(ui.scripts?.format).toBe('biome format --write . && prettier --write "**/*.svelte"');
+    // Repo-globale Scripts gehören NICHT ins Paket (laufen einmal im Root):
+    expect(ui.scripts?.bump).toBeUndefined();
+    expect(ui.scripts?.prepare).toBeUndefined();
+    expect(ui.scripts?.fix).toBeUndefined();
+  });
+
+  test('Root behält nicht-svelte Lint/Format und bekommt keine Svelte-Deps', () => {
+    const dir = monorepo();
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    const root = readPkg(dir);
+    expect(root.scripts?.lint).toBe('biome check .');
+    expect(root.scripts?.format).toBe('biome format --write .');
+    expect(root.scripts?.bump).toBe('bash scripts/bump.sh patch'); // repo-global im Root
+    expect(root.devDependencies?.['@biomejs/biome']).toBeDefined();
+    for (const d of SVELTE_DEPS) expect(root.devDependencies?.[d]).toBeUndefined();
+  });
+
+  test('Nicht-svelte-TS-Paket bekommt keine eigenen devDeps (Decision A, Hoisting)', () => {
+    const dir = monorepo();
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    const api = readPkg(dir, 'packages/api/package.json'); // TS (src/), nicht svelte
+    expect(api.devDependencies).toBeUndefined();
+    // ... bekommt aber die package-scoped tsconfig (bestehendes Verhalten):
+    expect(existsSync(join(dir, 'packages/api/tsconfig.json'))).toBe(true);
+  });
+
+  test('zweiter sync ist idempotent (kein erneuter Svelte-Paket-Drift)', () => {
+    const dir = monorepo();
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    const before = readFileSync(join(dir, 'packages/ui/package.json'), 'utf8');
+    runHarness('sync', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    expect(readFileSync(join(dir, 'packages/ui/package.json'), 'utf8')).toBe(before);
+  });
+
+  test('canonicalDevDeps/Scripts respektieren das Tier', () => {
+    const svelteCtx = detectContext(project({ name: 'u', devDependencies: { svelte: '^5' } }));
+    const plainCtx = detectContext(project({ name: 'p' }));
+    // svelte-Tier: nur Svelte-Deps, und nur bei Svelte-Kontext
+    expect(Object.keys(canonicalDevDeps(svelteCtx, 'svelte')).sort()).toEqual(
+      [...SVELTE_DEPS].sort()
+    );
+    expect(canonicalDevDeps(plainCtx, 'svelte')).toEqual({});
+    // root-Tier: nie Svelte
+    for (const d of SVELTE_DEPS) expect(canonicalDevDeps(svelteCtx, 'root')[d]).toBeUndefined();
+    expect(canonicalDevDeps(svelteCtx, 'root')['@biomejs/biome']).toBeDefined();
+    // kein Tier = bisheriges Verhalten (Svelte inklusive)
+    for (const d of SVELTE_DEPS) expect(canonicalDevDeps(svelteCtx)[d]).toBeDefined();
+    // Scripts
+    expect(canonicalScripts(svelteCtx, 'svelte')).toEqual({
+      format: 'biome format --write . && prettier --write "**/*.svelte"',
+      lint: 'biome check . && svelte-check --tsconfig ./tsconfig.json'
+    });
+    expect(canonicalScripts(plainCtx, 'svelte')).toEqual({});
+    expect(canonicalScripts(plainCtx, 'root').lint).toBe('biome check .');
+    expect(canonicalScripts(plainCtx, 'root').prepare).toBe('lefthook install');
+  });
+});
+
 describe('computePkgPlan', () => {
   test('fehlende Scripts & devDeps werden geplant', () => {
     const plan = computePkgPlan(detectContext(project({ name: 'x' })));
