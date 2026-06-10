@@ -24,7 +24,7 @@ extendet `@urbicon/biome-config` usw.).
 
 1. **Erweiterbar** → Config-Pakete; Inhalt lebt im Paket, Update via Versionsbump.
 2. **Müssen physisch existieren** (`cliff.toml`, `lefthook.yml`, `scripts/bump.sh`,
-   `bunfig.toml`) → von der CLI geschrieben. Datei-Policies in
+   `bunfig.toml`, `renovate.json`) → von der CLI geschrieben. Datei-Policies in
    `packages/cli/src/templates/index.ts`:
    - **managed** → 3-Wege-Sync via `.udx.json`-Hashes: unberührt-veraltete Dateien zieht
      `udx sync` nach, lokal geänderte schützt es als Konflikt (`--force` überschreibt)
@@ -37,9 +37,10 @@ extendet `@urbicon/biome-config` usw.).
 ### Capabilities (Stack-Awareness)
 
 `lib/capabilities.ts` bündelt stack-spezifische Bausteine (Datei + Scripts + devDeps) zu
-declinebaren Einheiten (`git-hooks`→lefthook, `lint-format`→biome). `supersededBy(ctx)`
-erkennt **generisch** (über deps/Dateien, nie über Projektnamen) einen konkurrierenden
-Stack (husky, eslint, …); der Baustein wird dann automatisch abgewählt und die Entscheidung
+declinebaren Einheiten (`git-hooks`→lefthook, `lint-format`→biome, `dep-updates`→renovate).
+`supersededBy(ctx)` erkennt **generisch** (über deps/Dateien, nie über Projektnamen) einen
+konkurrierenden Stack (husky, `core.hooksPath`/`.githooks`, eslint, dependabot, eigene
+Renovate-Config, …); der Baustein wird dann automatisch abgewählt und die Entscheidung
 in `.udx.json` `declined` persistiert. `udx adopt <id>` / `udx skip <id>` steuern das manuell.
 Abgewählte Bausteine sind in `init`/`sync`/`doctor` kein Soll (kein Fehler).
 
@@ -85,6 +86,9 @@ CLI lokal ausführen ohne Build: `bun run packages/cli/src/bin/udx.ts <befehl>`.
   - **Renovate** (Default, `renovate.json`, `rangeStrategy: bump`). Renovate kennt
     Bun-Catalogs (anders als pnpm/yarn) **nicht nativ** → ein Regex-`customManager`
     erfasst die Catalog-Versions-Strings; Config mit `renovate-config-validator` prüfbar.
+    Dieselbe Config geht als create-only-Baustein an Consumer (`dep-updates`, Asset
+    `src/assets/renovate.json.tpl` — byte-identisch zur Root-Datei, per Test gekoppelt;
+    `.tpl`, damit Biome sie nicht umformatiert).
   - manuell `bun run stack:update [--minor|--major]` (Default-Gate = nur Patch, schreibt
     operator-erhaltend, nie Downgrade, bei Fehlern gar nicht).
   - `bun outdated -r` = Lesesicht, zeigt named-Catalogs (`catalogs.svelte`) **nicht** — daher das Script.

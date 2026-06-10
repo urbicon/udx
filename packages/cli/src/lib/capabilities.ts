@@ -39,6 +39,11 @@ export const CAPABILITIES: Capability[] = [
     supersededBy: (ctx) => {
       if (hasDep(ctx, 'husky') || hasPath(ctx, '.husky')) return 'husky';
       if (hasDep(ctx, 'simple-git-hooks')) return 'simple-git-hooks';
+      // Hooks ohne Tool: ein .githooks-Verzeichnis bzw. ein Setup-Script, das core.hooksPath
+      // setzt (typisch `"prepare": "git config core.hooksPath .githooks"`). Lefthook würde das
+      // prepare-Script überschreiben und die bestehenden Hooks aushebeln — daher abwählen.
+      const setup = `${ctx.pkg.scripts?.prepare ?? ''} ${ctx.pkg.scripts?.postinstall ?? ''}`;
+      if (hasPath(ctx, '.githooks') || setup.includes('core.hooksPath')) return 'core.hooksPath';
       return null;
     }
   },
@@ -59,6 +64,32 @@ export const CAPABILITIES: Capability[] = [
       'svelte-check'
     ],
     supersededBy: (ctx) => (hasDep(ctx, 'eslint') ? 'eslint' : null)
+  },
+  {
+    id: 'dep-updates',
+    label: 'Dependency-Updates (renovate)',
+    files: ['renovate'],
+    scripts: [],
+    devDeps: [],
+    supersededBy: (ctx) => {
+      if (hasPath(ctx, '.github/dependabot.yml') || hasPath(ctx, '.github/dependabot.yaml')) {
+        return 'dependabot';
+      }
+      // Renovate ist bereits konfiguriert, nur an einem der alternativen Orte — nichts danebenlegen
+      // (eine renovate.json im Root deckt create-only ohnehin ab).
+      const elsewhere = [
+        'renovate.json5',
+        '.renovaterc',
+        '.renovaterc.json',
+        '.renovaterc.json5',
+        '.github/renovate.json',
+        '.github/renovate.json5'
+      ];
+      if (elsewhere.some((p) => hasPath(ctx, p)) || ctx.pkg.renovate !== undefined) {
+        return 'renovate (eigene Config)';
+      }
+      return null;
+    }
   }
 ];
 

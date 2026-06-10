@@ -1,6 +1,13 @@
 import { type CatalogTables, selectCatalogTable } from './catalog.ts';
 import type { PackageJson, ProjectContext } from './detect.ts';
-import { type DepName, SVELTE_DEPS, TOOL_DEPS, URBICON_DEPS, VERSIONS } from './versions.ts';
+import {
+  type DepName,
+  RENAMED_FROM,
+  SVELTE_DEPS,
+  TOOL_DEPS,
+  URBICON_DEPS,
+  VERSIONS
+} from './versions.ts';
 
 export interface PkgChange {
   name: string;
@@ -30,6 +37,8 @@ export interface PkgPlan {
   catalogEntriesDrift: CatalogChange[];
   /** D9 Catalog-Modus: literale/abweichende devDep → auf `catalog:`/`catalog:<name>` umstellen (`to` = ref). */
   devDepsToCatalog: PkgChange[];
+  /** Umbenannter Tool-Dep unter altem Namen (`RENAMED_FROM`) → entfernen; `to` = der Nachfolger. */
+  devDepsToRemove: PkgChange[];
 }
 
 const URBICON_SET = new Set<string>(URBICON_DEPS);
@@ -170,7 +179,8 @@ export function computePkgPlan(
     devDepsPinned: [],
     catalogEntriesToAdd: [],
     catalogEntriesDrift: [],
-    devDepsToCatalog: []
+    devDepsToCatalog: [],
+    devDepsToRemove: []
   };
   const scripts = ctx.pkg.scripts ?? {};
   const devDeps = ctx.pkg.devDependencies ?? {};
@@ -197,6 +207,14 @@ export function computePkgPlan(
         current !== undefined ? { name, to: pin, from: current } : { name, to: pin }
       );
       continue;
+    }
+
+    // Vorgänger-Name dieses Deps (RENAMED_FROM) noch installiert → entfernen, der Nachfolger
+    // wird in diesem Plan geführt. Innerhalb der Schleife, damit --only/skip automatisch greifen;
+    // ein `udx pin <alt>` hält den alten Namen bewusst (dann keine Entfernung).
+    const renamed = RENAMED_FROM[name as DepName];
+    if (renamed && devDeps[renamed] !== undefined && !pinned?.has(renamed)) {
+      plan.devDepsToRemove.push({ name: renamed, from: devDeps[renamed], to: name });
     }
 
     // Literal-Modus (kein Catalog) oder @urbicon/* (unified mit der CLI-Version, nie via Catalog/Renovate
@@ -272,6 +290,12 @@ export function mutatePkg(pkg: PackageJson, plan: PkgPlan, force: boolean): bool
   // applyCatalogEntries gedeckt) — kein Downgrade, daher ohne --force.
   for (const ch of plan.devDepsToCatalog) {
     devDeps[ch.name] = ch.to;
+    changed = true;
+  }
+  // Alter Name eines umbenannten Tool-Deps — der Nachfolger ist im selben Plan garantiert
+  // geführt (gleiche Schleifen-Iteration), daher gefahrlos ohne --force.
+  for (const ch of plan.devDepsToRemove) {
+    delete devDeps[ch.name];
     changed = true;
   }
   if (force) {

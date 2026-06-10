@@ -32,9 +32,18 @@ export const TOOL_DEPS = [
   'lefthook',
   'git-cliff',
   '@types/node',
-  'bun-types',
+  '@types/bun',
   'typescript'
 ] as const;
+
+/**
+ * Frühere Namen eines Tool-Deps (neu → alt). `udx sync` entfernt den alten Namen, wenn er den
+ * neuen schreibt — sonst bliebe in Bestandsprojekten beides liegen (z. B. `bun-types` neben
+ * `@types/bun`, was bei divergierenden Versionen doppelte Bun-Globals erzeugt).
+ */
+export const RENAMED_FROM: Partial<Record<DepName, string>> = {
+  '@types/bun': 'bun-types'
+};
 
 /** Nur in Svelte-Projekte geschriebene Deps (aus dem `svelte`-Catalog). */
 export const SVELTE_DEPS = [

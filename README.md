@@ -19,7 +19,8 @@ kopiert wurden — inklusive Mechanismus, um Verbesserungen wieder **zurückzusp
 1. **Erweiterbar** (Biome, commitlint, tsconfig) → als Pakete; Update via
    `bun update`. Inhalt lebt zentral im Paket.
 2. **Müssen physisch existieren** (`cliff.toml`, `lefthook.yml`, `scripts/bump.sh`,
-   `bunfig.toml`) → schreibt/aktualisiert die `udx`-CLI. `udx sync` zieht Änderungen nach.
+   `bunfig.toml`, `renovate.json`) → schreibt/aktualisiert die `udx`-CLI. `udx sync`
+   zieht Änderungen nach.
 
 ## Schnellstart in einem Projekt
 
@@ -47,6 +48,9 @@ udx doctor                    # Drift prüfen
   ignoriert `.svelte`; Svelte-Typen via `svelte-check`.
 - **Lefthook** als Git-Hook-Manager (eine `lefthook.yml` statt `.husky/`).
 - **Conventional Commits → git-cliff → Changelog**, Releases via `scripts/bump.sh`.
+- **Renovate** für Dependency-Updates (`renovate.json`, inkl. Bun-Catalog-Support) —
+  der App-Stack (vite, svelte, …) bleibt bewusst Sache des Projekts, udx pinnt nur
+  sein eigenes Tooling.
 
 ## Entwicklung an diesem Repo
 

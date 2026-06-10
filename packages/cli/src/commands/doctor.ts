@@ -156,6 +156,8 @@ export function runDoctor(flags: DoctorFlags): number {
       fail(`${label}fehlende devDeps: ${plan.devDepsToAdd.map((s) => s.name).join(', ')}`);
     for (const ch of plan.devDepsToCatalog)
       warn(`${label}devDep ${ch.name} ${ch.from} → ${ch.to} (sync stellt um)`);
+    for (const ch of plan.devDepsToRemove)
+      warn(`${label}devDep ${ch.name} ersetzt durch ${ch.to} (sync entfernt)`);
     for (const ch of plan.scriptsDrift) warn(`${label}script ${ch.name} weicht ab`);
     for (const ch of plan.devDepsDrift)
       warn(`${label}devDep ${ch.name} ${ch.from ?? '?'} → ${ch.to} (sync zieht hoch)`);

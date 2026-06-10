@@ -409,6 +409,123 @@ describe('capabilities', () => {
   });
 });
 
+describe('git-hooks: core.hooksPath-Erkennung', () => {
+  test('prepare-Script mit core.hooksPath wählt git-hooks ab (utilio-Fall)', () => {
+    const ctx = detectContext(
+      project({ name: 'x', scripts: { prepare: 'git config core.hooksPath .githooks' } })
+    );
+    const st = resolveCapabilities(ctx, emptyManifest()).find((s) => s.cap.id === 'git-hooks');
+    expect(st?.declined).toBe(true);
+    expect(st?.reason).toBe('core.hooksPath');
+  });
+
+  test('.githooks-Verzeichnis wählt git-hooks ab (auch ohne Setup-Script)', () => {
+    const dir = project({ name: 'x' });
+    mkdirSync(join(dir, '.githooks'));
+    const st = resolveCapabilities(detectContext(dir), emptyManifest()).find(
+      (s) => s.cap.id === 'git-hooks'
+    );
+    expect(st?.reason).toBe('core.hooksPath');
+  });
+
+  test('postinstall-Script mit core.hooksPath wählt ebenfalls ab', () => {
+    const ctx = detectContext(
+      project({ name: 'x', scripts: { postinstall: 'git config core.hooksPath .hooks' } })
+    );
+    const st = resolveCapabilities(ctx, emptyManifest()).find((s) => s.cap.id === 'git-hooks');
+    expect(st?.reason).toBe('core.hooksPath');
+  });
+});
+
+describe('dep-updates (renovate)', () => {
+  const stateOf = (dir: string, id = 'dep-updates') =>
+    resolveCapabilities(detectContext(dir), emptyManifest()).find((s) => s.cap.id === id);
+
+  test('init erzeugt renovate.json identisch zur dogfooded Root-Config', () => {
+    const dir = project({ name: 'x' });
+    apply(dir, detectContext(dir), INIT);
+    const rendered = readFileSync(join(dir, 'renovate.json'), 'utf8');
+    const root = readFileSync(join(import.meta.dir, '../../../renovate.json'), 'utf8');
+    expect(rendered).toBe(root);
+  });
+
+  test('dependabot wählt dep-updates ab', () => {
+    const dir = project({ name: 'x' });
+    mkdirSync(join(dir, '.github'));
+    writeFileSync(join(dir, '.github/dependabot.yml'), 'version: 2\n');
+    expect(stateOf(dir)).toMatchObject({ declined: true, reason: 'dependabot' });
+  });
+
+  test('Renovate-Config an alternativem Ort wählt dep-updates ab', () => {
+    const dir = project({ name: 'x' });
+    writeFileSync(join(dir, '.renovaterc.json'), '{}');
+    expect(stateOf(dir)).toMatchObject({ declined: true, reason: 'renovate (eigene Config)' });
+  });
+
+  test('renovate-Key in der package.json wählt dep-updates ab', () => {
+    const dir = project({ name: 'x', renovate: { extends: ['config:recommended'] } });
+    expect(stateOf(dir)).toMatchObject({ declined: true, reason: 'renovate (eigene Config)' });
+  });
+
+  test('vorhandene renovate.json im Root: Baustein aktiv, Datei bleibt (create-only)', () => {
+    const dir = project({ name: 'x' });
+    writeFileSync(join(dir, 'renovate.json'), '{"extends":["config:js-lib"]}\n');
+    expect(stateOf(dir)?.declined).toBe(false);
+    apply(dir, detectContext(dir), SYNC);
+    expect(readFileSync(join(dir, 'renovate.json'), 'utf8')).toContain('config:js-lib');
+  });
+});
+
+describe('Umbenannte Tool-Deps (bun-types → @types/bun)', () => {
+  test('plant Entfernung des alten Namens neben dem Nachfolger', () => {
+    const ctx = detectContext(project({ name: 'x', devDependencies: { 'bun-types': '^1.3.0' } }));
+    const plan = computePkgPlan(ctx);
+    expect(plan.devDepsToAdd.some((d) => d.name === '@types/bun')).toBe(true);
+    expect(plan.devDepsToRemove).toEqual([{ name: 'bun-types', from: '^1.3.0', to: '@types/bun' }]);
+  });
+
+  test('mutatePkg entfernt den alten Namen und führt den neuen', () => {
+    const ctx = detectContext(project({ name: 'x', devDependencies: { 'bun-types': '^1.3.0' } }));
+    mutatePkg(ctx.pkg, computePkgPlan(ctx), false);
+    expect(ctx.pkg.devDependencies?.['bun-types']).toBeUndefined();
+    expect(ctx.pkg.devDependencies?.['@types/bun']).toBe(VERSIONS['@types/bun']);
+  });
+
+  test('gepinnter alter Name bleibt bewusst stehen (udx pin bun-types)', () => {
+    const ctx = detectContext(project({ name: 'x', devDependencies: { 'bun-types': '^1.3.0' } }));
+    const plan = computePkgPlan(ctx, { pinned: new Set(['bun-types']) });
+    expect(plan.devDepsToRemove).toHaveLength(0);
+  });
+
+  test('--only ohne den Nachfolger plant keine Entfernung (chirurgisch)', () => {
+    const ctx = detectContext(project({ name: 'x', devDependencies: { 'bun-types': '^1.3.0' } }));
+    const plan = computePkgPlan(ctx, { only: { devDeps: new Set(['@biomejs/biome']) } });
+    expect(plan.devDepsToRemove).toHaveLength(0);
+  });
+
+  test('Catalog-Modus: catalog:-Verweis des alten Namens wird ebenfalls entfernt', () => {
+    const ctx = detectContext(
+      project({
+        name: 'x',
+        workspaces: { catalog: { 'bun-types': '^1.3.0' } },
+        devDependencies: { 'bun-types': 'catalog:' }
+      })
+    );
+    const plan = computePkgPlan(ctx, {}, undefined, readCatalogTables(ctx.pkg));
+    expect(plan.devDepsToRemove).toEqual([
+      { name: 'bun-types', from: 'catalog:', to: '@types/bun' }
+    ]);
+  });
+
+  test('sync schreibt die Entfernung in die package.json', () => {
+    const dir = project({ name: 'x', devDependencies: { 'bun-types': '^1.3.0' } });
+    runHarness('sync', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+    expect(pkg.devDependencies['bun-types']).toBeUndefined();
+    expect(pkg.devDependencies['@types/bun']).toBe(VERSIONS['@types/bun']);
+  });
+});
+
 describe('resolveSelection (--only)', () => {
   const fileIds = new Set(FILE_TEMPLATES.map((t) => t.id));
 

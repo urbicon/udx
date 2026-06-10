@@ -30,9 +30,9 @@
     "harness"
   ],
   "devDependencies": {
+    "@types/bun": "catalog:",
     "@types/node": "catalog:",
     "@urbicon/tsconfig": "workspace:*",
-    "bun-types": "catalog:",
     "typescript": "catalog:"
   }
 }

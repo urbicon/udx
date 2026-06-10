@@ -121,6 +121,14 @@ function pkgRows(plan: PkgPlan, prefix = ''): Row[] {
       detail: `${ch.from} → ${ch.to}`,
       cmd: 'udx sync'
     });
+  // Umbenannter Tool-Dep: alter Name entfällt zugunsten des Nachfolgers.
+  for (const ch of plan.devDepsToRemove)
+    rows.push({
+      state: 'behind',
+      label: `${prefix}${ch.name}`,
+      detail: `entfällt (ersetzt durch ${ch.to})`,
+      cmd: 'udx sync'
+    });
   for (const ch of plan.scriptsToAdd)
     rows.push({
       state: 'missing',

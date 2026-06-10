@@ -1,6 +1,9 @@
 import bumpSh from '../assets/bump.sh' with { type: 'text' };
 import claudeTpl from '../assets/CLAUDE.md.tpl' with { type: 'text' };
 import cliffToml from '../assets/cliff.toml' with { type: 'text' };
+// .tpl statt .json: als Text importiert (nicht als JSON-Modul) und von Biome unformatiert,
+// damit der Inhalt byte-identisch zur dogfooded Root-renovate.json bleibt (per Test gekoppelt).
+import renovateJson from '../assets/renovate.json.tpl' with { type: 'text' };
 import { VERSIONS } from '../lib/versions.ts';
 
 export interface RenderCtx {
@@ -163,6 +166,9 @@ export const FILE_TEMPLATES: FileTemplate[] = [
     render: renderPrettierignore
   },
   { id: 'gitignore', dest: '.gitignore', policy: 'create-only', render: renderGitignore },
+  // create-only: Schedules/packageRules sind projektspezifisch — Updates am Baustein erreichen
+  // Bestandsprojekte bewusst nicht automatisch (eigene Renovate-Configs bleiben unangetastet).
+  { id: 'renovate', dest: 'renovate.json', policy: 'create-only', render: () => renovateJson },
   {
     id: 'claude',
     dest: 'CLAUDE.md',

@@ -2,7 +2,7 @@
 
 CLI zum Einrichten und **Synchronisieren** des urbicon-Entwicklungs-Harness in
 Bun/Svelte-Projekten. Schreibt die nicht-erweiterbaren Dateien (cliff.toml,
-Lefthook-Hooks, bump.sh, bunfig.toml) und verdrahtet die erweiterbaren Config-Pakete
+Lefthook-Hooks, bump.sh, bunfig.toml, renovate.json) und verdrahtet die erweiterbaren Config-Pakete
 (`@urbicon/biome-config`, `@urbicon/commitlint-config`, `@urbicon/tsconfig`).
 
 ## Installation
@@ -48,7 +48,7 @@ cd packages/cli && bun link        # global verfügbar machen
   nach (Verbesserungen fließen zurück); **lokal geänderte** schützt es als Konflikt
   (`--force` übernimmt, `--diff` zeigt den Unterschied, `--interactive` fragt).
 - **create-only** (`biome.json`, `tsconfig.json`, `commitlint.config.mjs`,
-  `.prettierrc`*, `.gitignore`, `CLAUDE.md`): nur angelegt, wenn sie fehlen —
+  `.prettierrc`*, `.gitignore`, `renovate.json`, `CLAUDE.md`): nur angelegt, wenn sie fehlen —
   Projekt-Anpassungen bleiben erhalten. Inhaltliche Updates kommen über die
   Config-Pakete (Versionsbump).
 
@@ -68,8 +68,9 @@ abgewählt, wenn udx einen konkurrierenden Stack erkennt — ohne Projekt-Hardco
 
 | Capability    | Bausteine              | wird abgewählt bei            |
 | ------------- | ---------------------- | ----------------------------- |
-| `git-hooks`   | lefthook + prepare     | husky / `.husky/` / simple-git-hooks |
+| `git-hooks`   | lefthook + prepare     | husky / `.husky/` / simple-git-hooks / `core.hooksPath` (`.githooks/`) |
 | `lint-format` | biome + lint/format/fix | eslint                       |
+| `dep-updates` | renovate.json          | dependabot / eigene Renovate-Config (anderer Ort oder package.json-Key) |
 
 Abgewählte Bausteine sind kein Soll (kein `doctor`-Fehler); die Entscheidung wird in
 `.udx.json` persistiert. Migration: `udx adopt git-hooks && udx sync --only git-hooks`.

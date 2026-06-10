@@ -208,7 +208,11 @@ function patchPkg(
     plan.catalogEntriesDrift.length +
     plan.devDepsToCatalog.length;
   const auto =
-    plan.scriptsToAdd.length + plan.devDepsToAdd.length + plan.devDepsDrift.length + catalogChanges;
+    plan.scriptsToAdd.length +
+    plan.devDepsToAdd.length +
+    plan.devDepsDrift.length +
+    plan.devDepsToRemove.length +
+    catalogChanges;
   const scriptDrift = plan.scriptsDrift.length;
   const held = plan.devDepsPinned.length;
 
@@ -225,6 +229,10 @@ function patchPkg(
   // Versions-Drift wird sicher angehoben (nie Downgrade) — kein --force nötig.
   for (const ch of plan.devDepsDrift) {
     log.info(`${c.cyan('↑ devDep')} ${ch.name} ${ch.from} → ${ch.to}`);
+  }
+  // Umbenannter Tool-Dep: alter Name entfällt zugunsten des Nachfolgers.
+  for (const ch of plan.devDepsToRemove) {
+    log.info(`${c.red('- devDep')} ${ch.name} ${c.gray(`(ersetzt durch ${ch.to})`)}`);
   }
   // Catalog-Modus (D9): devDep auf catalog: umstellen, Eintrag anlegen/anheben.
   for (const ch of plan.devDepsToCatalog) {

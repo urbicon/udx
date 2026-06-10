@@ -15,6 +15,7 @@ Dieses Projekt nutzt das geteilte **@urbicon/udx**-Harness. Aktualisieren mit `u
 | Git-Hooks     | Lefthook (`lefthook.yml`)                          |
 | Versionierung | `scripts/bump.sh` → `bun run bump[:minor|:major]`  |
 | TS-Config     | `@urbicon/tsconfig`                                |
+| Dep-Updates   | Renovate (`renovate.json`)                         |
 
 ### Commands
 
