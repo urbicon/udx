@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 This changelog is automatically generated from [Conventional Commits](https://www.conventionalcommits.org).
 
 
+## [0.2.1] - 2026-06-10
+
+### Bug Fixes
+- **cli**: Wirkungsloses .prettierignore-Template korrigieren
+
 ## [0.2.0] - 2026-06-10
 
 ### Features
