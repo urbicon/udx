@@ -113,9 +113,16 @@ function renderPrettierrc(): string {
 }
 
 function renderPrettierignore(): string {
+  // gitignore-Semantik: ein Re-Include (`!`) greift nicht unterhalb ausgeschlossener
+  // Verzeichnisse. `**/*` + `!**/*.svelte` ließe Prettier daher NULL Dateien sehen —
+  // stattdessen `*` + `!*/` (Verzeichnisse offen halten) + `!*.svelte`.
   return `# Biome ist für alles außer .svelte zuständig.
-**/*
-!**/*.svelte
+*
+!*/
+!*.svelte
+node_modules/
+.svelte-kit/
+build/
 `;
 }
 

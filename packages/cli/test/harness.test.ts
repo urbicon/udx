@@ -437,6 +437,18 @@ describe('git-hooks: core.hooksPath-Erkennung', () => {
   });
 });
 
+describe('prettierignore-Template', () => {
+  test('nutzt gitignore-taugliches Re-Include (kein wirkungsloses **/* + !**/*.svelte)', () => {
+    // Regression: ein Re-Include greift nicht unterhalb ausgeschlossener Verzeichnisse —
+    // mit `**/*` sah Prettier null Dateien. `!*/` muss die Verzeichnisse offen halten.
+    const tpl = FILE_TEMPLATES.find((t) => t.id === 'prettierignore');
+    const out = tpl?.render({ svelte: true, projectName: 'x' }) ?? '';
+    expect(out).toContain('!*/');
+    expect(out).toContain('!*.svelte');
+    expect(out).not.toContain('**/*');
+  });
+});
+
 describe('dep-updates (renovate)', () => {
   const stateOf = (dir: string, id = 'dep-updates') =>
     resolveCapabilities(detectContext(dir), emptyManifest()).find((s) => s.cap.id === id);
