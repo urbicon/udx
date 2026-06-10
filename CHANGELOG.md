@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 This changelog is automatically generated from [Conventional Commits](https://www.conventionalcommits.org).
 
 
+## [0.2.0] - 2026-06-10
+
+### Features
+- **tsconfig**: Typen via @types/bun statt bun-types beziehen
+- **cli**: Renovate-Baustein, core.hooksPath-Erkennung & @types/bun-Migration
+
 ## [0.1.5] - 2026-06-09
 
 ### Bug Fixes
