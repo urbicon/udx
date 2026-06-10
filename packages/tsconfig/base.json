@@ -28,7 +28,7 @@
     "strictFunctionTypes": true,
     "strictNullChecks": true,
     "target": "ES2022",
-    "types": ["node", "bun-types"],
+    "types": ["node", "bun"],
     "verbatimModuleSyntax": true
   },
   "exclude": ["node_modules", "dist", "build", "tests/**/*"]
