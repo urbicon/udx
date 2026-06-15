@@ -35,7 +35,7 @@ if [[ "${BUMP_SKIP_VERIFY:-0}" == "1" ]]; then
 else
   has_script() { bun -e "process.exit(require('./package.json').scripts?.['$1'] ? 0 : 1)" 2>/dev/null; }
   if has_script build; then echo "→ bun run build"; bun run build; fi
-  if has_script test; then echo "→ bun test"; bun test; fi
+  if has_script test; then echo "→ bun run test"; bun run test; fi
 fi
 
 ROLLBACK_REF=$(git rev-parse HEAD)

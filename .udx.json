@@ -1,6 +1,9 @@
 {
-  "harness": "0.1.1",
+  "harness": "0.2.1",
   "declined": {},
   "adopted": [],
-  "files": {}
+  "files": {
+    "scripts/bump.sh": "f428da5b3ffddb785d5cda204776b2c76c57d8d598052cc9b9988903a8d3eb75"
+  },
+  "pinned": {}
 }
