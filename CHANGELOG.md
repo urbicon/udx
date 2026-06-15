@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 This changelog is automatically generated from [Conventional Commits](https://www.conventionalcommits.org).
 
 
+## [0.2.6] - 2026-06-15
+
+### Bug Fixes
+- **biome-config**: Recommended → preset (Biome 2.5 Deprecation)
+
 ## [0.2.5] - 2026-06-15
 
 ### Features

@@ -1,6 +1,6 @@
 {
   "name": "@urbicon/udx",
-  "version": "0.2.5",
+  "version": "0.2.6",
   "description": "CLI zum Einrichten und Synchronisieren des urbicon-Entwicklungs-Harness",
   "type": "module",
   "author": "Felix Urban",
