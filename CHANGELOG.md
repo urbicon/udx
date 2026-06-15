@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 This changelog is automatically generated from [Conventional Commits](https://www.conventionalcommits.org).
 
 
+## [0.2.2] - 2026-06-15
+
+### Bug Fixes
+- **cli**: Bump.sh nutzt bun run test statt bun test bei der Verifikation
+
+### Build
+- Upgrade dependencies
+
 ## [0.2.1] - 2026-06-10
 
 ### Bug Fixes
