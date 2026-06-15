@@ -1,6 +1,6 @@
 {
   "name": "@urbicon/tsconfig",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "description": "Geteilte TypeScript-Basiskonfiguration für Bun/Svelte-Projekte",
   "author": "Felix Urban",
   "license": "MIT",
