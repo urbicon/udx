@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 This changelog is automatically generated from [Conventional Commits](https://www.conventionalcommits.org).
 
 
+## [0.2.3] - 2026-06-15
+
+### Bug Fixes
+- **cli**: Root-scoped Svelte-Bausteine via svelteAnywhere abdecken
+
+### Miscellaneous
+- Biome.json $schema an installiertes biome 2.5.0 angleichen
+
 ## [0.2.2] - 2026-06-15
 
 ### Bug Fixes
