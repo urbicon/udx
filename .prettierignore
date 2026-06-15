@@ -1,0 +1,7 @@
+# Biome ist für alles außer .svelte zuständig.
+*
+!*/
+!*.svelte
+node_modules/
+.svelte-kit/
+build/

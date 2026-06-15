@@ -1,8 +1,10 @@
 {
-  "harness": "0.2.1",
+  "harness": "0.2.3",
   "declined": {},
   "adopted": [],
   "files": {
+    "cliff.toml": "0a96aa399ae9203c714c99fa1a2b6c4ccdd2c867e5da7b4312742dce2dd6781e",
+    "lefthook.yml": "8a79bec641750c906f974355418632bc24a6d4129a5bf655e5aed0db8f7ca9c5",
     "scripts/bump.sh": "f428da5b3ffddb785d5cda204776b2c76c57d8d598052cc9b9988903a8d3eb75"
   },
   "pinned": {}

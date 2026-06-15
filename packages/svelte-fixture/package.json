@@ -6,7 +6,9 @@
   "description": "Internes Smoke-Test-Paket: dogfoodet den vorgeschriebenen Svelte-Toolstack (catalog:svelte) und hält dessen Versionen für `bun outdated` sichtbar (referenziert den svelte-Catalog).",
   "scripts": {
     "check": "prettier --check . && svelte-check --tsconfig ./tsconfig.json",
-    "test": "true"
+    "test": "true",
+    "format": "biome format --write . && prettier --write \"**/*.svelte\"",
+    "lint": "biome check . && svelte-check --tsconfig ./tsconfig.json"
   },
   "devDependencies": {
     "prettier": "catalog:svelte",
