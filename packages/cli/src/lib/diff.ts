@@ -14,9 +14,12 @@ interface Op {
   line: string;
 }
 
+/** Abschließender Zeilenumbruch — als Top-Level-Regex, da `splitLines` je Diff oft läuft. */
+const TRAILING_NEWLINE = /\n$/;
+
 function splitLines(text: string): string[] {
   if (text === '') return [];
-  return text.replace(/\n$/, '').split('\n');
+  return text.replace(TRAILING_NEWLINE, '').split('\n');
 }
 
 /**
@@ -85,7 +88,7 @@ export function formatDiff(oldText: string, newText: string, opts: DiffOptions =
     for (let p = lo; p <= hi; p++) visible[p] = true;
   }
 
-  const paint = (s: string, fn: (x: string) => string) => (color ? fn(s) : s);
+  const paint = (s: string, fn: (x: string) => string): string => (color ? fn(s) : s);
   const out: string[] = [];
   let k = 0;
   while (k < ops.length) {

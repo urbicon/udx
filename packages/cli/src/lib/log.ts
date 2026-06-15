@@ -1,16 +1,16 @@
 import { c } from './colors.ts';
 
 export const log = {
-  title: (s: string) => console.log(`\n${c.bold(s)}`),
-  info: (s: string) => console.log(`  ${s}`),
-  step: (s: string) => console.log(`${c.cyan('›')} ${s}`),
-  ok: (s: string) => console.log(`  ${c.green('✓')} ${s}`),
-  warn: (s: string) => console.log(`  ${c.yellow('!')} ${s}`),
-  err: (s: string) => console.error(`  ${c.red('✗')} ${s}`),
-  skip: (s: string) => console.log(`  ${c.gray('·')} ${c.gray(s)}`),
-  plain: (s = '') => console.log(s),
+  title: (s: string): void => console.log(`\n${c.bold(s)}`),
+  info: (s: string): void => console.log(`  ${s}`),
+  step: (s: string): void => console.log(`${c.cyan('›')} ${s}`),
+  ok: (s: string): void => console.log(`  ${c.green('✓')} ${s}`),
+  warn: (s: string): void => console.log(`  ${c.yellow('!')} ${s}`),
+  err: (s: string): void => console.error(`  ${c.red('✗')} ${s}`),
+  skip: (s: string): void => console.log(`  ${c.gray('·')} ${c.gray(s)}`),
+  plain: (s = ''): void => console.log(s),
   /** Mehrzeiligen Block (z. B. einen Diff) eingerückt ausgeben. */
-  block: (s: string, pad = '    ') =>
+  block: (s: string, pad = '    '): void =>
     console.log(
       s
         .split('\n')

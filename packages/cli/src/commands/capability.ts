@@ -1,4 +1,4 @@
-import { CAPABILITIES, findCapability } from '../lib/capabilities.ts';
+import { CAPABILITIES, type Capability, findCapability } from '../lib/capabilities.ts';
 import { c } from '../lib/colors.ts';
 import { log } from '../lib/log.ts';
 import { readManifest, writeManifest } from '../lib/manifest.ts';
@@ -20,7 +20,7 @@ function listCapabilities(): void {
 }
 
 /** Schließt den Baustein-Namen aus den Flags auf; meldet & listet bei Fehlern. */
-function resolve(flags: CapabilityFlags, verb: string) {
+function resolve(flags: CapabilityFlags, verb: string): Capability | undefined {
   if (!flags.capability) {
     log.err(`Kein Baustein angegeben — z. B. \`udx ${verb} git-hooks\``);
     listCapabilities();

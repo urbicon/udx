@@ -78,7 +78,13 @@ CLI lokal ausführen ohne Build: `bun run packages/cli/src/bin/udx.ts <befehl>`.
   Lefthook, Conventional Commits + git-cliff. Beim Ändern von Templates **beide
   Seiten** denken: das Asset/Render **und** ob `init`/`sync`/`doctor` korrekt damit
   umgehen.
-- **Tool-Versionen** sind im **Bun-Catalog** der Root-`package.json`
+- **Biome-Regeln** (`@urbicon/biome-config`): `recommended` + gezielte Zusatzregeln
+  (`noUnusedVariables`/`noShadow`/`useTopLevelRegex` = `error`, `useExplicitReturnType` =
+  `warn`). Erweitern nach Politik: nursery meiden (instabil bei Consumer-Biome-Upgrades →
+  die eine Ausnahme nur als `warn`), reine Stilregeln + Bun-False-Positives (`Bun`-Global,
+  `process`, node-Module) raus; Test-Globs lockern via `overrides` nur die produktivcode-
+  orientierten Regeln (`useExplicitReturnType`/`useTopLevelRegex`). Gedogfooded ⇒ jede neue
+  Regel muss 0 Findings haben (Consumer-Code mitfixen, sonst bricht `bun run lint`).
   (`workspaces.catalog` + `catalogs.svelte`) zentral gepinnt — die Single Source of
   Truth. `versions.ts` *liest* sie nur und leitet die Consumer-Pins ab; `@urbicon/*`
   sind unified mit der CLI-Version (nicht im Catalog). Der Stack wird **getrennt vom

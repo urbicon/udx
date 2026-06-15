@@ -86,7 +86,7 @@ export function canonicalDevDeps(
   tier?: DepTier
 ): Partial<Record<DepName, string>> {
   const out: Partial<Record<DepName, string>> = {};
-  const add = (names: readonly DepName[]) => {
+  const add = (names: readonly DepName[]): void => {
     for (const n of names) out[n] = VERSIONS[n];
   };
   if (tier === undefined || tier === 'root') add(ROOT_TIER_DEPS);
@@ -94,15 +94,21 @@ export function canonicalDevDeps(
   return out;
 }
 
+/** Versions-Range-Parsing — Top-Level-Regexe (laufen je Dependency in Schleifen). */
+const WHITESPACE = /\s+/;
+const SEMVER_TOKEN = /\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/;
+const VERSION_RANGE = /^[v^~>=<\s]*\d/;
+const SIMPLE_RANGE = /^([v^~>=]*)\d[\w.+-]*$/;
+
 /**
  * Floor (untere Schranke) einer Range: `^1.2.3`→`1.2.3`, `>=2.0.0 <3`→`2.0.0`, `<3 >=2`→`2.0.0`.
  * Obergrenzen (`<…`) werden übersprungen, damit auch umgekehrt notierte Compound-Ranges den
  * tatsächlichen Floor liefern (nicht versehentlich die Obergrenze).
  */
 function floorVersion(range: string): string | null {
-  for (const token of range.trim().split(/\s+/)) {
+  for (const token of range.trim().split(WHITESPACE)) {
     if (token.startsWith('<')) continue; // Obergrenze ist nicht der Floor
-    const m = token.match(/\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?/);
+    const m = token.match(SEMVER_TOKEN);
     if (m) return m[0];
   }
   return null;
@@ -113,7 +119,7 @@ function floorVersion(range: string): string | null {
  * `catalog:`/`workspace:`/`npm:`/`github:`/`git+…` beginnen mit einem Buchstaben → `false`.
  */
 function isVersionRange(s: string): boolean {
-  return /^[v^~>=<\s]*\d/.test(s);
+  return VERSION_RANGE.test(s);
 }
 
 /**
@@ -130,7 +136,7 @@ export function raise(current: string, target: string): string {
   const tf = floorVersion(target);
   if (cf === null || tf === null) return current; // nicht vergleichbar → unverändert
   if (Bun.semver.order(cf, tf) >= 0) return current; // current ≥ target → kein Downgrade
-  const simple = current.trim().match(/^([v^~>=]*)\d[\w.+-]*$/);
+  const simple = current.trim().match(SIMPLE_RANGE);
   return simple ? `${simple[1]}${tf}` : target;
 }
 

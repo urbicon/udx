@@ -63,7 +63,7 @@ export function applyFiles(
 
     const target = abs(cwd, t.dest);
     const content = t.render(ctx);
-    const remember = () => {
+    const remember = (): void => {
       if (t.policy === 'managed' && !opts.dryRun) manifest.files[t.dest] = hashContent(content);
     };
 
@@ -152,6 +152,9 @@ const BUNFIG_BLOCK = `# @urbicon-Pakete aus Codebergs Registry. Token via Env-Va
 ${BUNFIG_SCOPE_LINE}
 `;
 
+/** Vorhandener [install.scopes]-Header (TOML erlaubt keinen zweiten) — Top-Level-Regex. */
+const INSTALL_SCOPES_HEADER = /^\s*\[install\.scopes\]/m;
+
 /**
  * Stellt die @urbicon-Registry in bunfig.toml sicher (Bun-natives Pendant zu .npmrc).
  * Additive Idempotenz: erkennt eine bestehende Konfiguration an der Registry-URL. Einen
@@ -171,7 +174,7 @@ export function ensureBunfig(cwd: string, dryRun: boolean): FileResult {
   const content = readText(target);
   if (content.includes(URBICON_REGISTRY)) return { dest, action: 'unchanged' };
 
-  if (/^\s*\[install\.scopes\]/m.test(content)) {
+  if (INSTALL_SCOPES_HEADER.test(content)) {
     return {
       dest,
       action: 'skipped',

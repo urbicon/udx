@@ -18,9 +18,13 @@ export interface DoctorFlags {
   diff: boolean;
 }
 
+/** Schema-URL → Versions-Capture; Operator-Präfix eines Pins. Top-Level (Regex-Performance). */
+const BIOME_SCHEMA_RE = /biomejs\.dev\/schemas\/([^/"]+)\/schema\.json/;
+const RANGE_OPERATOR_RE = /^[\^~]/;
+
 /** Liest die biome-Version aus der `$schema`-URL einer biome.json (null, wenn keine erkennbar). */
 export function biomeSchemaVersion(biomeJson: string): string | null {
-  return biomeJson.match(/biomejs\.dev\/schemas\/([^/"]+)\/schema\.json/)?.[1] ?? null;
+  return biomeJson.match(BIOME_SCHEMA_RE)?.[1] ?? null;
 }
 
 export function runDoctor(flags: DoctorFlags): number {
@@ -34,12 +38,12 @@ export function runDoctor(flags: DoctorFlags): number {
 
   let fails = 0;
   let warns = 0;
-  const pass = (s: string) => log.ok(s);
-  const warn = (s: string) => {
+  const pass = (s: string): void => log.ok(s);
+  const warn = (s: string): void => {
     warns++;
     log.warn(s);
   };
-  const fail = (s: string) => {
+  const fail = (s: string): void => {
     fails++;
     log.err(s);
   };
@@ -101,7 +105,7 @@ export function runDoctor(flags: DoctorFlags): number {
     const biomeJson = abs(ctx.cwd, 'biome.json');
     if (exists(biomeJson)) {
       const schemaV = biomeSchemaVersion(readText(biomeJson));
-      const pinned = VERSIONS['@biomejs/biome'].replace(/^[\^~]/, '');
+      const pinned = VERSIONS['@biomejs/biome'].replace(RANGE_OPERATOR_RE, '');
       if (schemaV && schemaV !== pinned)
         warn(
           `biome.json $schema ${schemaV} hängt hinter biome ${pinned} — ` +
@@ -170,7 +174,7 @@ export function runDoctor(flags: DoctorFlags): number {
   };
   // Root-Tier (svelte-Root = alles) + je Svelte-Paket das svelte-Tier (D9-C); Label kennzeichnet das Paket.
   // Mit Catalog-Akkumulation planen (wie der echte sync, D9-A/E) — so meldet doctor exakt dessen Ergebnis.
-  const catLabel = (ch: { name: string; table: string | null }) =>
+  const catLabel = (ch: { name: string; table: string | null }): string =>
     ch.table ? `${ch.name} (catalogs.${ch.table})` : ch.name;
   const { targets, catalogChanges } = planWorkspace(view, pkgFilter);
   for (const { ws, plan } of targets) {
