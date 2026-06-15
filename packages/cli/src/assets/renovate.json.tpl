@@ -13,12 +13,22 @@
         "\"(?<depName>@?[a-z0-9][\\w.\\-/]*)\"\\s*:\\s*\"(?<currentValue>[\\^~]\\d[\\w.\\-+]*)\""
       ],
       "datasourceTemplate": "npm"
+    },
+    {
+      "customType": "regex",
+      "description": "biome.json $schema-URL trägt die exakte biome-Version. biome.json ist create-only (udx sync zieht sie nicht nach), darum die Version hier wie eine Dependency mitführen — sonst meldet biome nach jedem Bump einen Schema-Mismatch. Eigener Manager, weil die exakte (^/~-lose) Version aus dem Catalog-Regex oben herausfällt.",
+      "fileMatch": ["^biome\\.json$"],
+      "matchStrings": [
+        "https://biomejs\\.dev/schemas/(?<currentValue>\\d[\\w.\\-]*)/schema\\.json"
+      ],
+      "depNameTemplate": "@biomejs/biome",
+      "datasourceTemplate": "npm"
     }
   ],
   "packageRules": [
     {
-      "description": "Catalog ist die Single Source of Truth — Updates gebündelt als ein PR statt verstreut.",
-      "matchFileNames": ["package.json"],
+      "description": "Catalog ist die Single Source of Truth (inkl. der biome.json-$schema-Version) — Updates gebündelt als ein PR statt verstreut.",
+      "matchFileNames": ["package.json", "biome.json"],
       "matchUpdateTypes": ["patch", "minor"],
       "groupName": "stack (catalog)"
     },

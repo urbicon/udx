@@ -7,6 +7,7 @@ import { abs, exists, readText } from '../lib/fs.ts';
 import { log } from '../lib/log.ts';
 import { hashContent, readManifest } from '../lib/manifest.ts';
 import { planWorkspace, resolveWorkspaceView } from '../lib/targets.ts';
+import { VERSIONS } from '../lib/versions.ts';
 import { detectWiring, wiringSkipDeps } from '../lib/wiring.ts';
 import { FILE_TEMPLATES, type RenderCtx } from '../templates/index.ts';
 
@@ -15,6 +16,11 @@ export interface DoctorFlags {
   svelte: boolean | undefined;
   /** Bei abweichenden managed-Dateien den Unterschied lokal → Template anzeigen. */
   diff: boolean;
+}
+
+/** Liest die biome-Version aus der `$schema`-URL einer biome.json (null, wenn keine erkennbar). */
+export function biomeSchemaVersion(biomeJson: string): string | null {
+  return biomeJson.match(/biomejs\.dev\/schemas\/([^/"]+)\/schema\.json/)?.[1] ?? null;
 }
 
 export function runDoctor(flags: DoctorFlags): number {
@@ -83,6 +89,24 @@ export function runDoctor(flags: DoctorFlags): number {
     if (flags.diff) {
       const d = formatDiff(local, expected, { color: true });
       if (d) log.block(d);
+    }
+  }
+
+  // biome.json ist create-only ⇒ sync zieht die exakte `$schema`-Version nicht nach. Driftet sie
+  // hinter den biome-Pin, meldet biome selbst einen Schema-Mismatch — hier als Warnung sichtbar
+  // machen. Der Renovate-customManager (renovate.json) hält sie im Normalfall automatisch nach
+  // (biome.json + Catalog im selben PR); diese Warnung deckt den Rest ab (kein Renovate / noch
+  // nicht gelaufen / manueller stack:update).
+  if (!declined.files.get('biome')) {
+    const biomeJson = abs(ctx.cwd, 'biome.json');
+    if (exists(biomeJson)) {
+      const schemaV = biomeSchemaVersion(readText(biomeJson));
+      const pinned = VERSIONS['@biomejs/biome'].replace(/^[\^~]/, '');
+      if (schemaV && schemaV !== pinned)
+        warn(
+          `biome.json $schema ${schemaV} hängt hinter biome ${pinned} — ` +
+            '`udx sync --only biome --force` (oder $schema anpassen)'
+        );
     }
   }
 

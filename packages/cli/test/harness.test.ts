@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runAdd, runAdopt, runSkip } from '../src/commands/capability.ts';
-import { runDoctor } from '../src/commands/doctor.ts';
+import { biomeSchemaVersion, runDoctor } from '../src/commands/doctor.ts';
 import { installPlan, runHarness } from '../src/commands/harness.ts';
 import { helpText } from '../src/commands/help.ts';
 import { runPin, runUnpin } from '../src/commands/pin.ts';
@@ -461,6 +461,20 @@ describe('dep-updates (renovate)', () => {
     expect(rendered).toBe(root);
   });
 
+  test('führt die biome.json-$schema-Version als @biomejs/biome mit (gegen Schema-Drift)', () => {
+    const cfg = JSON.parse(readFileSync(join(import.meta.dir, '../../../renovate.json'), 'utf8'));
+    const cm = cfg.customManagers.find((m: { fileMatch?: string[] }) =>
+      m.fileMatch?.includes('^biome\\.json$')
+    );
+    expect(cm?.depNameTemplate).toBe('@biomejs/biome');
+    expect(cm?.matchStrings?.[0]).toContain('biomejs');
+    // … und in der stack-Gruppe gebündelt, damit Catalog-Pin + $schema im selben PR bumpen:
+    const stack = cfg.packageRules.find(
+      (r: { groupName?: string }) => r.groupName === 'stack (catalog)'
+    );
+    expect(stack?.matchFileNames).toContain('biome.json');
+  });
+
   test('dependabot wählt dep-updates ab', () => {
     const dir = project({ name: 'x' });
     mkdirSync(join(dir, '.github'));
@@ -485,6 +499,32 @@ describe('dep-updates (renovate)', () => {
     expect(stateOf(dir)?.declined).toBe(false);
     apply(dir, detectContext(dir), SYNC);
     expect(readFileSync(join(dir, 'renovate.json'), 'utf8')).toContain('config:js-lib');
+  });
+});
+
+describe('biome $schema-Drift (doctor)', () => {
+  const pinned = VERSIONS['@biomejs/biome'].replace(/^[\^~]/, '');
+
+  test('biomeSchemaVersion liest die Version aus der $schema-URL (sonst null)', () => {
+    expect(biomeSchemaVersion('"$schema": "https://biomejs.dev/schemas/2.4.16/schema.json"')).toBe(
+      '2.4.16'
+    );
+    expect(biomeSchemaVersion('{}')).toBeNull();
+  });
+
+  test('init erzeugt biome.json mit $schema == gepinnte biome-Version (kein Drift)', () => {
+    const dir = project({ name: 'x' });
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    expect(biomeSchemaVersion(readFileSync(join(dir, 'biome.json'), 'utf8'))).toBe(pinned);
+  });
+
+  test('veraltete $schema-Version: doctor warnt, schlägt aber nicht fehl', () => {
+    const dir = monorepo(true, {}); // bekannt doctor-clean nach init
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    const biome = join(dir, 'biome.json');
+    writeFileSync(biome, readFileSync(biome, 'utf8').replace(/schemas\/[^/]+\//, 'schemas/0.0.1/'));
+    // Drift ist eine Warnung (return 0), kein Fehler (return 1):
+    expect(runDoctor({ cwd: dir, svelte: undefined, diff: false })).toBe(0);
   });
 });
 
