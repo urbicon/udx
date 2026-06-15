@@ -60,7 +60,9 @@
       "linter": {
         "rules": {
           "nursery": { "useExplicitReturnType": "off" },
-          "performance": { "useTopLevelRegex": "off" }
+          "performance": { "useTopLevelRegex": "off" },
+          "style": { "noNonNullAssertion": "off" },
+          "suspicious": { "noExplicitAny": "off" }
         }
       }
     }
