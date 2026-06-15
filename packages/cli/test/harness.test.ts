@@ -833,6 +833,31 @@ describe('Per-Paket-Svelte-Tier (D9 WP1)', () => {
     for (const d of SVELTE_DEPS) expect(root.devDependencies?.[d]).toBeUndefined();
   });
 
+  test('non-svelte-Root: root-Hook + Prettier-Config decken .svelte aus Sub-Paketen ab', () => {
+    const dir = monorepo(); // nicht-svelte Root, packages/ui = svelte
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    // lefthook.yml ist root-scoped, muss aber `.svelte` aus packages/ui formatieren:
+    const lefthook = readFileSync(join(dir, 'lefthook.yml'), 'utf8');
+    expect(lefthook).toContain("glob: '*.svelte'");
+    expect(lefthook).toContain('bunx prettier --write');
+    // … und die zugehörige Prettier-Config liegt am Root, sonst läuft der Hook ohne Svelte-Plugin:
+    expect(existsSync(join(dir, '.prettierrc'))).toBe(true);
+    expect(existsSync(join(dir, '.prettierignore'))).toBe(true);
+    // doctor sieht kein Drift — das Soll (svelteAnywhere) deckt sich mit dem Geschriebenen:
+    expect(runDoctor({ cwd: dir, svelte: undefined, diff: false })).toBe(0);
+  });
+
+  test('renderLefthook: svelteAnywhere steuert die Prettier-Zeile, fällt sonst auf svelte zurück', () => {
+    const lefthook = FILE_TEMPLATES.find((t) => t.id === 'lefthook');
+    if (!lefthook) throw new Error('lefthook-Template fehlt');
+    const hasSveltePrettier = (ctx: { svelte: boolean; svelteAnywhere?: boolean }) =>
+      lefthook.render({ projectName: 'x', ...ctx }).includes("glob: '*.svelte'");
+    expect(hasSveltePrettier({ svelte: true })).toBe(true); // svelte-Root / Single-Package
+    expect(hasSveltePrettier({ svelte: false })).toBe(false); // reines TS
+    expect(hasSveltePrettier({ svelte: false, svelteAnywhere: true })).toBe(true); // non-svelte-Root + svelte-Sub
+    expect(hasSveltePrettier({ svelte: true, svelteAnywhere: false })).toBe(false); // svelteAnywhere hat Vorrang (??)
+  });
+
   test('Nicht-svelte-TS-Paket bekommt keine eigenen devDeps (Decision A, Hoisting)', () => {
     const dir = monorepo();
     runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });

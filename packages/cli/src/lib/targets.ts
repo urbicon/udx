@@ -32,6 +32,8 @@ export interface WorkspaceView {
   isMonorepo: boolean;
   rootTier: DepTier | undefined;
   tsPkgs: TsPackage[];
+  /** true, wenn Root oder irgendein Workspace-Paket svelte ist — steuert root-scoped Svelte-Bausteine. */
+  svelteAnywhere: boolean;
   /** Rohe Workspace-Pfade (vor dem TS-Filter) — für Anzahl-Meldungen. */
   workspaces: string[];
 }
@@ -50,12 +52,16 @@ export function resolveWorkspaceView(
   // Ein svelte-Root (oder Single-Package) trägt alles (kein Tier-Filter); nur der nicht-svelte
   // Monorepo-Root beschränkt sich aufs root-Tier (Svelte-Werkzeug liegt dann je Svelte-Paket).
   const rootTier: DepTier | undefined = isMonorepo && !ctx.svelte ? 'root' : undefined;
+  // Die lefthook.yml + .prettierrc/.prettierignore sind root-scoped, müssen aber `.svelte` aus allen
+  // Paketen abdecken — daher „svelte irgendwo" statt nur am (im Monorepo oft non-svelte) Root.
+  const svelteAnywhere = ctx.svelte || tsPkgs.some(({ ctx: pkgCtx }) => pkgCtx.svelte);
   return {
     rootCtx: ctx,
     catalog: readCatalogTables(ctx.pkg),
     isMonorepo,
     rootTier,
     tsPkgs,
+    svelteAnywhere,
     workspaces
   };
 }

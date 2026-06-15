@@ -26,7 +26,7 @@ import {
 import { resolveWorkspaceView } from '../lib/targets.ts';
 import { CLI_VERSION } from '../lib/versions.ts';
 import { detectWiring, type WiringState, wiringSkipDeps } from '../lib/wiring.ts';
-import { FILE_TEMPLATES } from '../templates/index.ts';
+import { FILE_TEMPLATES, type RenderCtx } from '../templates/index.ts';
 
 export interface HarnessFlags {
   cwd: string;
@@ -324,7 +324,7 @@ function printFooter(
  */
 function runInteractive(
   cwd: string,
-  ctx: ProjectContext,
+  ctx: RenderCtx,
   mode: 'init' | 'sync',
   manifest: Manifest,
   conflicts: FileResult[]
@@ -403,10 +403,11 @@ export function runHarness(
 
   // Monorepo: package-scoped Bausteine (tsconfig) laufen je Paket, nicht im Root. Die gemeinsame
   // Workspace-Sicht (tsPkgs + rootTier + catalog) teilt sich harness mit status/doctor.
-  const { catalog, isMonorepo, rootTier, tsPkgs, workspaces } = resolveWorkspaceView(
-    ctx,
-    flags.svelte
-  );
+  const { catalog, isMonorepo, rootTier, svelteAnywhere, tsPkgs, workspaces } =
+    resolveWorkspaceView(ctx, flags.svelte);
+  // root-scoped Bausteine (lefthook, .prettierrc/.prettierignore) müssen `.svelte` aus allen Paketen
+  // abdecken — daher der um svelteAnywhere angereicherte Ctx, nicht der ggf. non-svelte Root-Ctx.
+  const rootCtx: RenderCtx = { ...ctx, svelteAnywhere };
   const baseOpts: ApplyOptions = {
     mode,
     dryRun: flags.dryRun,
@@ -425,7 +426,7 @@ export function runHarness(
   log.step('Dateien');
   const results: FileResult[] = applyFiles(
     ctx.cwd,
-    ctx,
+    rootCtx,
     isMonorepo ? { ...baseOpts, scope: 'root' } : baseOpts,
     manifest,
     declined.files,
@@ -517,7 +518,7 @@ export function runHarness(
   if (flags.interactive && !flags.dryRun) {
     runInteractive(
       ctx.cwd,
-      ctx,
+      rootCtx,
       mode,
       manifest,
       results.filter((r) => r.action === 'conflict')

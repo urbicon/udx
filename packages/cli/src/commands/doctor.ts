@@ -8,7 +8,7 @@ import { log } from '../lib/log.ts';
 import { hashContent, readManifest } from '../lib/manifest.ts';
 import { planWorkspace, resolveWorkspaceView } from '../lib/targets.ts';
 import { detectWiring, wiringSkipDeps } from '../lib/wiring.ts';
-import { FILE_TEMPLATES } from '../templates/index.ts';
+import { FILE_TEMPLATES, type RenderCtx } from '../templates/index.ts';
 
 export interface DoctorFlags {
   cwd: string;
@@ -41,14 +41,17 @@ export function runDoctor(flags: DoctorFlags): number {
   // Gemeinsame Workspace-Sicht mit init/sync/status: TS-Pakete (für package-scoped Dateien + den
   // per-Svelte-Paket-Plan, D9-C), das Root-Tier und der Catalog (D9-A).
   const view = resolveWorkspaceView(ctx, flags.svelte);
-  const { isMonorepo, tsPkgs } = view;
+  const { isMonorepo, svelteAnywhere, tsPkgs } = view;
+  // root-scoped Bausteine müssen `.svelte` aus allen Paketen abdecken — Soll mit svelteAnywhere
+  // berechnen, sonst weicht das Doctor-Soll von dem ab, was init/sync schreiben.
+  const rootCtx: RenderCtx = { ...ctx, svelteAnywhere };
 
   log.plain();
   log.step('Dateien');
   for (const t of FILE_TEMPLATES) {
     // Im Monorepo werden package-scoped Bausteine je Paket geprüft (unten).
     if (isMonorepo && (t.scope ?? 'root') !== 'root') continue;
-    if (t.applies && !t.applies(ctx)) continue;
+    if (t.applies && !t.applies(rootCtx)) continue;
     // Abgewählte Capability → kein Soll, daher kein Fehler.
     const reason = declined.files.get(t.id);
     if (reason) {
@@ -65,7 +68,7 @@ export function runDoctor(flags: DoctorFlags): number {
       continue;
     }
     const local = readText(target);
-    const expected = t.render(ctx);
+    const expected = t.render(rootCtx);
     if (local === expected) {
       pass(t.dest);
       continue;

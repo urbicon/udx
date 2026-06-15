@@ -9,6 +9,13 @@ import { VERSIONS } from '../lib/versions.ts';
 export interface RenderCtx {
   svelte: boolean;
   projectName: string;
+  /**
+   * Monorepo: true, wenn IRGENDEIN Workspace-Paket svelte ist — auch bei non-svelte-Root. Steuert die
+   * root-scoped Svelte-Bausteine (lefthook-Prettier-Zeile, `.prettierrc`/`.prettierignore`), die `.svelte`
+   * über alle Pakete hinweg abdecken müssen. Fehlt das Feld (Single-Package / direkte Template-Nutzung),
+   * fällt die Entscheidung auf `svelte` zurück.
+   */
+  svelteAnywhere?: boolean;
 }
 
 /**
@@ -37,13 +44,16 @@ export interface FileTemplate {
 const BIOME_SCHEMA = `https://biomejs.dev/schemas/${VERSIONS['@biomejs/biome'].replace(/^[\^~]/, '')}/schema.json`;
 
 function renderLefthook(ctx: RenderCtx): string {
-  const sveltePrettier = ctx.svelte
-    ? `    prettier:
+  // root-scoped Datei: im Monorepo formatiert der eine Root-Hook `.svelte` aus ALLEN Paketen, daher
+  // svelteAnywhere statt nur ctx.svelte (das beim non-svelte-Root false wäre → Hook ohne Svelte-Zeile).
+  const sveltePrettier =
+    (ctx.svelteAnywhere ?? ctx.svelte)
+      ? `    prettier:
       glob: '*.svelte'
       run: bunx prettier --write {staged_files}
       stage_fixed: true
 `
-    : '';
+      : '';
   return `# Git-Hooks (verwaltet von @urbicon/udx).
 pre-commit:
   parallel: true
@@ -162,14 +172,14 @@ export const FILE_TEMPLATES: FileTemplate[] = [
     id: 'prettierrc',
     dest: '.prettierrc',
     policy: 'create-only',
-    applies: (ctx) => ctx.svelte,
+    applies: (ctx) => ctx.svelteAnywhere ?? ctx.svelte,
     render: renderPrettierrc
   },
   {
     id: 'prettierignore',
     dest: '.prettierignore',
     policy: 'create-only',
-    applies: (ctx) => ctx.svelte,
+    applies: (ctx) => ctx.svelteAnywhere ?? ctx.svelte,
     render: renderPrettierignore
   },
   { id: 'gitignore', dest: '.gitignore', policy: 'create-only', render: renderGitignore },
