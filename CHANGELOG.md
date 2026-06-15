@@ -4,6 +4,15 @@ All notable changes to this project will be documented in this file.
 This changelog is automatically generated from [Conventional Commits](https://www.conventionalcommits.org).
 
 
+## [0.2.4] - 2026-06-15
+
+### Features
+- **cli**: Biome-$schema-Drift schließen — Renovate-customManager + doctor-Warnung
+- **biome-config**: Gezielte Qualitätsregeln über recommended hinaus
+
+### Miscellaneous
+- Udx-Root dogfoodet svelte-anywhere (root-lefthook + .prettierrc)
+
 ## [0.2.3] - 2026-06-15
 
 ### Bug Fixes
