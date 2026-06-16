@@ -1,0 +1,16 @@
+{
+  "name": "urbicon",
+  "owner": {
+    "name": "Felix Urban"
+  },
+  "metadata": {
+    "description": "urbicon development tools for Claude Code"
+  },
+  "plugins": [
+    {
+      "name": "urbicon-udx",
+      "source": "./claude",
+      "description": "Skills & agents for the urbicon development harness (docs-review and others)"
+    }
+  ]
+}

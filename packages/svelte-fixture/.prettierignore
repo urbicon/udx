@@ -1,0 +1,3 @@
+# Biome handles everything except .svelte.
+**/*
+!**/*.svelte

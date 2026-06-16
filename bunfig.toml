@@ -1,0 +1,3 @@
+# @urbicon packages from Codeberg's public registry — no token needed to install.
+[install.scopes]
+"@urbicon" = "https://codeberg.org/api/packages/urbicon/npm/"

@@ -1,0 +1,7 @@
+# Biome handles everything except .svelte.
+*
+!*/
+!*.svelte
+node_modules/
+.svelte-kit/
+build/

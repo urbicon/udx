@@ -1,0 +1,97 @@
+import rootPkg from '../../../../package.json' with { type: 'json' };
+import cliPkg from '../../package.json' with { type: 'json' };
+
+/**
+ * The @urbicon config packages are versioned in unison — they always carry the same
+ * version as this CLI (see scripts/bump.sh). Therefore derive it from the own package.json
+ * instead of hardcoding: a release pulls the consumer pins along automatically
+ * (assuming a fresh build, which prepublishOnly guarantees).
+ */
+/** Version of this CLI — source for the `harness` field in the project manifest. */
+export const CLI_VERSION = cliPkg.version;
+
+const SELF = `^${cliPkg.version}`;
+
+/**
+ * The single source of truth for the prescribed tool versions is the Bun catalog of the
+ * root `package.json` (`workspaces.catalog` + `catalogs.svelte`). udx's own packages reference
+ * it via `catalog:`, so that `bun outdated`/a bump there propagates automatically into the
+ * consumer pins derived here. `bun build` inlines the root `package.json` (verified), so at
+ * runtime no file access is needed.
+ */
+const ws = (
+  rootPkg as {
+    workspaces: { catalog: Record<string, string>; catalogs: { svelte: Record<string, string> } };
+  }
+).workspaces;
+
+/** Tool deps that udx writes into every project (from the default catalog). */
+export const TOOL_DEPS = [
+  '@biomejs/biome',
+  '@commitlint/cli',
+  'lefthook',
+  'git-cliff',
+  '@types/node',
+  '@types/bun',
+  'typescript'
+] as const;
+
+/**
+ * Former names of a tool dep (new → old). `udx sync` removes the old name when it writes the
+ * new one — otherwise existing projects would keep both around (e.g. `bun-types` next to
+ * `@types/bun`, which produces duplicate Bun globals when the versions diverge).
+ */
+export const RENAMED_FROM: Partial<Record<DepName, string>> = {
+  '@types/bun': 'bun-types'
+};
+
+/** Deps written only into Svelte projects (from the `svelte` catalog). */
+export const SVELTE_DEPS = [
+  'prettier',
+  'prettier-plugin-svelte',
+  'prettier-plugin-tailwindcss',
+  'svelte-check'
+] as const;
+
+/** udx's own config packages — unified with the CLI version, hence not in the catalog. */
+export const URBICON_DEPS = [
+  '@urbicon/biome-config',
+  '@urbicon/commitlint-config',
+  '@urbicon/tsconfig'
+] as const;
+
+export type DepName =
+  | (typeof TOOL_DEPS)[number]
+  | (typeof SVELTE_DEPS)[number]
+  | (typeof URBICON_DEPS)[number];
+
+/**
+ * Reads the `names` from a catalog table and preserves their precise key types (via the
+ * generic `N`), so that the spreads in `VERSIONS` together cover all of `DepName`. If an
+ * entry is missing, the catalog is incomplete → a loud error instead of a silent `undefined`.
+ */
+function pick<N extends readonly string[]>(
+  table: Record<string, string>,
+  names: N
+): Record<N[number], string> {
+  const out = {} as Record<N[number], string>;
+  for (const n of names) {
+    const v = table[n];
+    if (v === undefined) {
+      throw new Error(
+        `udx: catalog entry missing for "${n}" (root package.json workspaces.catalog)`
+      );
+    }
+    out[n as N[number]] = v;
+  }
+  return out;
+}
+
+/** Pinned versions that `udx init`/`udx sync` write into consumer projects — derived from the catalog. */
+export const VERSIONS: Record<DepName, string> = {
+  ...pick(ws.catalog, TOOL_DEPS),
+  ...pick(ws.catalogs.svelte, SVELTE_DEPS),
+  '@urbicon/biome-config': SELF,
+  '@urbicon/commitlint-config': SELF,
+  '@urbicon/tsconfig': SELF
+};

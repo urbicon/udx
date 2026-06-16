@@ -1,0 +1,38 @@
+{
+  "name": "@urbicon/udx",
+  "version": "0.2.6",
+  "description": "CLI for setting up and syncing the urbicon development harness",
+  "type": "module",
+  "author": "Felix Urban",
+  "license": "MIT",
+  "publishConfig": {
+    "registry": "https://codeberg.org/api/packages/urbicon/npm/"
+  },
+  "bin": {
+    "udx": "dist/bin/udx.js"
+  },
+  "files": [
+    "dist/**/*"
+  ],
+  "scripts": {
+    "build": "bun build ./src/bin/udx.ts --target=bun --outdir=dist/bin --minify --sourcemap=linked && chmod +x dist/bin/udx.js",
+    "dev": "bun run ./src/bin/udx.ts",
+    "check": "tsc --noEmit",
+    "test": "bun test",
+    "clean": "rm -rf dist node_modules",
+    "prepublishOnly": "bun run build"
+  },
+  "keywords": [
+    "urbicon",
+    "udx",
+    "cli",
+    "scaffolding",
+    "harness"
+  ],
+  "devDependencies": {
+    "@types/bun": "catalog:",
+    "@types/node": "catalog:",
+    "@urbicon/tsconfig": "workspace:*",
+    "typescript": "catalog:"
+  }
+}
