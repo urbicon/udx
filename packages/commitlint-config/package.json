@@ -1,6 +1,6 @@
 {
   "name": "@urbicon/commitlint-config",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Shared commitlint configuration (Conventional Commits) with scope factory",
   "type": "module",
   "author": "Felix Urban",

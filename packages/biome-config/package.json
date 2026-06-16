@@ -1,6 +1,6 @@
 {
   "name": "@urbicon/biome-config",
-  "version": "0.2.6",
+  "version": "0.2.7",
   "description": "Shared Biome base configuration (formatter + linter) for Bun/Svelte projects",
   "author": "Felix Urban",
   "license": "MIT",
