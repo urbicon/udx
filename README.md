@@ -12,7 +12,6 @@ hand — including a mechanism to **feed improvements back**.
 | `@urbicon/biome-config`      | Biome formatter + linter (replaces Prettier + ESLint for TS/JS/JSON) |
 | `@urbicon/commitlint-config` | Conventional Commits with a scope factory                           |
 | `@urbicon/udx` (CLI)          | `udx init` / `udx sync` / `udx doctor` — distributes & updates everything |
-| `claude/`                    | Claude Code plugin (skills such as `docs-review`)                   |
 
 ## Two kinds of building blocks
 

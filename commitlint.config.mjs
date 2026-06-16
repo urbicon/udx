@@ -2,5 +2,5 @@ import { createConfig } from '@urbicon/commitlint-config';
 
 // Scopes for this repo (the udx harness itself).
 export default createConfig({
-  scopes: ['cli', 'biome-config', 'commitlint-config', 'tsconfig', 'claude', 'deps']
+  scopes: ['cli', 'biome-config', 'commitlint-config', 'tsconfig', 'deps']
 });

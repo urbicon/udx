@@ -2,8 +2,8 @@
 
 ## Project overview
 
-Shared dev harness for Bun/Svelte projects: configs, a `udx` CLI, and a
-Claude plugin. Goal: **maintain a proven setup once** (Biome, Conventional Commits,
+Shared dev harness for Bun/Svelte projects: configs and a `udx` CLI.
+Goal: **maintain a proven setup once** (Biome, Conventional Commits,
 git-cliff, Lefthook, bump pipeline) and distribute it to projects instead of
 copying — including `udx sync` to pull in improvements.
 
@@ -18,7 +18,6 @@ extends `@urbicon/biome-config`, etc.).
 | `packages/biome-config`      | `@urbicon/biome-config` — shared `biome.json`              |
 | `packages/commitlint-config` | `@urbicon/commitlint-config` — `createConfig({ scopes })`   |
 | `packages/cli`               | `@urbicon/udx` — `init` / `sync` / `doctor`                  |
-| `claude/`                    | Claude plugin (skills, e.g. `docs-review`)                  |
 
 ### Two kinds of building blocks (core concept)
 
@@ -118,4 +117,3 @@ just needs the `@urbicon` scope → registry mapping, which `udx init` writes in
 not `${VAR}`, and the file holds only the env reference, not a secret. Release: `bun run
 bump` → `bun run release:publish` (config packages before the CLI). `versions.ts`
 automatically derives the `@urbicon/*` pins from its own version.
-Claude plugin → marketplace `.claude-plugin/marketplace.json` (repo root).
