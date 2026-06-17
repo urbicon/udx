@@ -105,8 +105,9 @@ Run the CLI locally without building: `bun run packages/cli/src/bin/udx.ts <comm
 ## Commits & releases
 
 Conventional Commits, scopes: `cli`, `biome-config`, `commitlint-config`,
-`tsconfig`, `claude`, `deps`. Release: `bun run bump[:minor|:major]` → version +
-changelog (git-cliff) + annotated tag. Push with `git push --follow-tags`.
+`tsconfig`, `claude`, `deps`. `bun run bump[:minor|:major]` → version + changelog
+(git-cliff) + annotated tag, then push with `git push --follow-tags`. `bun run
+release[:minor|:major]` chains the lot: bump + push + `release:publish`.
 
 ## Distribution
 
@@ -114,6 +115,7 @@ changelog (git-cliff) + annotated tag. Push with `git push --follow-tags`.
 just needs the `@urbicon` scope → registry mapping, which `udx init` writes into
 `bunfig.toml` `[install.scopes]`). Only **publishing** needs a token: `bun publish` reads
 `$CODEBERG_TOKEN` from `.npmrc` (`:_authToken=$CODEBERG_TOKEN`) — Bun interpolates `$VAR`,
-not `${VAR}`, and the file holds only the env reference, not a secret. Release: `bun run
-bump` → `bun run release:publish` (config packages before the CLI). `versions.ts`
-automatically derives the `@urbicon/*` pins from its own version.
+not `${VAR}`, and the file holds only the env reference, not a secret. `bun run release`
+runs the full pipeline (bump → push → publish, config packages before the CLI);
+`release:publish` alone only publishes. `versions.ts` automatically derives the
+`@urbicon/*` pins from its own version.
