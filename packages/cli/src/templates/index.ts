@@ -168,6 +168,7 @@ export const FILE_TEMPLATES: FileTemplate[] = [
     policy: 'create-only',
     render: renderCommitlint
   },
+  // .prettierrc = preference (semi, plugins, useTabs) → create-only, project tweaks stay.
   {
     id: 'prettierrc',
     dest: '.prettierrc',
@@ -175,10 +176,14 @@ export const FILE_TEMPLATES: FileTemplate[] = [
     applies: (ctx) => ctx.svelteAnywhere ?? ctx.svelte,
     render: renderPrettierrc
   },
+  // .prettierignore = mechanic: it encodes the fixed Biome/Prettier boundary (Prettier sees only
+  // `.svelte`, JSON/TS belong to Biome). It carries no project content, so it is `managed` — `udx
+  // sync` catches up a stale/scaffold version (e.g. a pre-udx ignore that only lists lockfiles and
+  // therefore lets Prettier reformat package.json, fighting Biome over the indent).
   {
     id: 'prettierignore',
     dest: '.prettierignore',
-    policy: 'create-only',
+    policy: 'managed',
     applies: (ctx) => ctx.svelteAnywhere ?? ctx.svelte,
     render: renderPrettierignore
   },

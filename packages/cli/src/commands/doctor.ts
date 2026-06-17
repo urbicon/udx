@@ -27,6 +27,22 @@ export function biomeSchemaVersion(biomeJson: string): string | null {
   return biomeJson.match(BIOME_SCHEMA_RE)?.[1] ?? null;
 }
 
+/** `useTabs: true` in a .prettierrc — collides with Biome's space indent. Top-level (regex perf). */
+const PRETTIER_USETABS_RE = /"useTabs"\s*:\s*true\b/;
+
+/**
+ * True if a .prettierrc sets `useTabs: true`. Parses the JSON form (the shape udx writes); falls
+ * back to a regex so a JSON5/commented `.prettierrc` is still recognized rather than silently
+ * passing. Detects the cross-formatter indent conflict (Prettier tabs vs. Biome spaces).
+ */
+export function prettierUsesTabs(prettierrc: string): boolean {
+  try {
+    return (JSON.parse(prettierrc) as { useTabs?: unknown }).useTabs === true;
+  } catch {
+    return PRETTIER_USETABS_RE.test(prettierrc);
+  }
+}
+
 export function runDoctor(flags: DoctorFlags): number {
   const ctx = detectContext(flags.cwd, flags.svelte);
   const manifest = readManifest(ctx.cwd);
@@ -113,6 +129,19 @@ export function runDoctor(flags: DoctorFlags): number {
         );
     }
   }
+
+  // .prettierrc is create-only (project preferences stay), so sync never rewrites it. But
+  // `useTabs: true` collides with Biome's `indentStyle: space`: as soon as Prettier touches a JSON/TS
+  // file (an editor's format-on-save, or a too-open .prettierignore) it flips the indent to tabs and
+  // the next Biome run flips it back — package.json ping-pongs between styles. Surface it as a
+  // warning; the fix is `useTabs: false` (Biome owns JSON/TS, Prettier only .svelte). The .prettierignore
+  // side of the same conflict is now caught by the managed drift check above.
+  const prettierrc = abs(ctx.cwd, '.prettierrc');
+  if (exists(prettierrc) && prettierUsesTabs(readText(prettierrc)))
+    warn(
+      '.prettierrc `useTabs: true` collides with Biome `indentStyle: space` — set `useTabs: false` ' +
+        '(Biome formats JSON/TS, Prettier only .svelte)'
+    );
 
   // Monorepo: package-scoped building blocks per TS package (asset packages without TS code skipped).
   // tsconfig is create-only ⇒ only check existence, no managed drift.

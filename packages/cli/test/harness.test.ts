@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runAdd, runAdopt, runSkip } from '../src/commands/capability.ts';
-import { biomeSchemaVersion, runDoctor } from '../src/commands/doctor.ts';
+import { biomeSchemaVersion, prettierUsesTabs, runDoctor } from '../src/commands/doctor.ts';
 import { installPlan, runHarness } from '../src/commands/harness.ts';
 import { helpText } from '../src/commands/help.ts';
 import { runPin, runUnpin } from '../src/commands/pin.ts';
@@ -447,6 +447,37 @@ describe('prettierignore template', () => {
     expect(out).toContain('!*.svelte');
     expect(out).not.toContain('**/*');
   });
+
+  // .prettierignore encodes the fixed Biome/Prettier boundary (mechanic) ⇒ managed, while
+  // .prettierrc (preferences) stays create-only. So sync can catch up a stale/scaffold ignore.
+  test('is managed: its hash is remembered, .prettierrc (create-only) is not', () => {
+    expect(FILE_TEMPLATES.find((t) => t.id === 'prettierignore')?.policy).toBe('managed');
+    expect(FILE_TEMPLATES.find((t) => t.id === 'prettierrc')?.policy).toBe('create-only');
+    const dir = project({ name: 'x', devDependencies: { svelte: '^5' } });
+    const m = emptyManifest();
+    applyFiles(dir, detectContext(dir), INIT, m);
+    expect(m.files['.prettierignore']).toBeDefined(); // managed → hashed
+    expect(m.files['.prettierrc']).toBeUndefined(); // create-only → not hashed
+  });
+
+  test('a stale udx-written .prettierignore (lockfiles only) is caught up by sync', () => {
+    const dir = project({ name: 'x', devDependencies: { svelte: '^5' } });
+    // pre-udx scaffold ignore: only lockfiles → lets Prettier reformat package.json (the cookery bug).
+    const old = 'package-lock.json\npnpm-lock.yaml\nyarn.lock\n';
+    writeFileSync(join(dir, '.prettierignore'), old);
+    // udx had written exactly this before ⇒ hash known ⇒ untouched-stale, safe to update.
+    const m: Manifest = { ...emptyManifest(), files: { '.prettierignore': hashContent(old) } };
+    const res = applyFiles(dir, detectContext(dir), SYNC, m);
+    expect(res.find((r) => r.dest === '.prettierignore')?.action).toBe('updated');
+    expect(readFileSync(join(dir, '.prettierignore'), 'utf8')).toContain('!*.svelte');
+  });
+
+  test('an unknown .prettierignore (no manifest hash) is protected as conflict — --force needed', () => {
+    const dir = project({ name: 'x', devDependencies: { svelte: '^5' } });
+    writeFileSync(join(dir, '.prettierignore'), 'package-lock.json\n');
+    const res = applyFiles(dir, detectContext(dir), SYNC, emptyManifest());
+    expect(res.find((r) => r.dest === '.prettierignore')?.action).toBe('conflict');
+  });
 });
 
 describe('dep-updates (renovate)', () => {
@@ -524,6 +555,25 @@ describe('biome $schema drift (doctor)', () => {
     const biome = join(dir, 'biome.json');
     writeFileSync(biome, readFileSync(biome, 'utf8').replace(/schemas\/[^/]+\//, 'schemas/0.0.1/'));
     // drift is a warning (return 0), not a failure (return 1):
+    expect(runDoctor({ cwd: dir, svelte: undefined, diff: false })).toBe(0);
+  });
+});
+
+describe('prettier useTabs conflict (doctor)', () => {
+  test('prettierUsesTabs detects useTabs:true (else false)', () => {
+    expect(prettierUsesTabs('{"useTabs": true}')).toBe(true);
+    expect(prettierUsesTabs('{"useTabs": false}')).toBe(false);
+    expect(prettierUsesTabs('{}')).toBe(false);
+    // regex fallback for a non-strict-JSON .prettierrc (comments/trailing comma)
+    expect(prettierUsesTabs('{ "useTabs": true, /* tabs */ }')).toBe(true);
+  });
+
+  test('useTabs:true in .prettierrc: doctor warns but does not fail', () => {
+    const dir = monorepo(true, {}); // svelte ui pkg ⇒ root .prettierrc; doctor-clean after init
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    const rc = join(dir, '.prettierrc');
+    writeFileSync(rc, readFileSync(rc, 'utf8').replace('"useTabs": false', '"useTabs": true'));
+    // the conflict is a warning (return 0), not a failure (return 1):
     expect(runDoctor({ cwd: dir, svelte: undefined, diff: false })).toBe(0);
   });
 });
