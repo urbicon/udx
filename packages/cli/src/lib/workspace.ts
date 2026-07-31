@@ -35,5 +35,5 @@ export function isTypeScriptPackage(dir: string, pkg: PackageJson): boolean {
   if (exists(abs(dir, 'tsconfig.json'))) return true; // already a TS package
   if (exists(abs(dir, 'src'))) return true; // has a source directory
   const deps = { ...pkg.dependencies, ...pkg.devDependencies };
-  return Boolean(deps.typescript || deps['@urbicon/tsconfig'] || deps.svelte);
+  return Boolean(deps.typescript || deps['@urbicon-ui/tsconfig'] || deps.svelte);
 }

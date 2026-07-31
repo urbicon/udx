@@ -54,7 +54,7 @@ function renderLefthook(ctx: RenderCtx): string {
       stage_fixed: true
 `
       : '';
-  return `# Git hooks (managed by @urbicon/udx).
+  return `# Git hooks (managed by @urbicon-ui/udx).
 pre-commit:
   parallel: true
   commands:
@@ -77,7 +77,7 @@ function renderBiome(): string {
   // `files.includes` overrides the base.
   const config: Record<string, unknown> = {
     $schema: BIOME_SCHEMA,
-    extends: ['@urbicon/biome-config/biome-base.json'],
+    extends: ['@urbicon-ui/biome-config/biome-base.json'],
     files: { includes: ['**', '!**/*.svelte', '!**/CHANGELOG.md'] }
   };
   return `${JSON.stringify(config, null, 2)}\n`;
@@ -86,11 +86,11 @@ function renderBiome(): string {
 function renderTsconfig(ctx: RenderCtx): string {
   const config = ctx.svelte
     ? {
-        extends: ['@urbicon/tsconfig/svelte.json', './.svelte-kit/tsconfig.json'],
+        extends: ['@urbicon-ui/tsconfig/svelte.json', './.svelte-kit/tsconfig.json'],
         compilerOptions: { baseUrl: '.' }
       }
     : {
-        extends: '@urbicon/tsconfig/base.json',
+        extends: '@urbicon-ui/tsconfig/base.json',
         compilerOptions: { outDir: 'dist' },
         include: ['src']
       };
@@ -98,7 +98,7 @@ function renderTsconfig(ctx: RenderCtx): string {
 }
 
 function renderCommitlint(): string {
-  return `import { createConfig } from '@urbicon/commitlint-config';
+  return `import { createConfig } from '@urbicon-ui/commitlint-config';
 
 export default createConfig({
   // Add project-specific scopes here, e.g. ['ui', 'api', 'core']:

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "display": "@urbicon/tsconfig svelte",
+  "display": "@urbicon-ui/tsconfig svelte",
   "extends": "./base.json",
   "compilerOptions": {
     "declaration": false,

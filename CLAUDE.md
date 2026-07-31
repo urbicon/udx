@@ -1,4 +1,4 @@
-# @urbicon/udx — development harness
+# @urbicon-ui/udx — development harness
 
 ## Project overview
 
@@ -10,20 +10,20 @@ copying — including `udx sync` to pull in improvements.
 ## Architecture
 
 Bun workspace monorepo that **dogfoods its own configs** (root `biome.json`
-extends `@urbicon/biome-config`, etc.).
+extends `@urbicon-ui/biome-config`, etc.).
 
 | Package / folder             | Role                                                        |
 | ---------------------------- | ----------------------------------------------------------- |
-| `packages/tsconfig`          | `@urbicon/tsconfig` — `base.json`, `svelte.json`            |
-| `packages/biome-config`      | `@urbicon/biome-config` — shared `biome.json`              |
-| `packages/commitlint-config` | `@urbicon/commitlint-config` — `createConfig({ scopes })`   |
-| `packages/cli`               | `@urbicon/udx` — `init` / `sync` / `doctor`                  |
+| `packages/tsconfig`          | `@urbicon-ui/tsconfig` — `base.json`, `svelte.json`            |
+| `packages/biome-config`      | `@urbicon-ui/biome-config` — shared `biome.json`              |
+| `packages/commitlint-config` | `@urbicon-ui/commitlint-config` — `createConfig({ scopes })`   |
+| `packages/cli`               | `@urbicon-ui/udx` — `init` / `sync` / `doctor`                  |
 
 ### Two kinds of building blocks (core concept)
 
 1. **Extensible** → config packages; content lives in the package, updated via version bump.
 2. **Must physically exist** (`cliff.toml`, `lefthook.yml`, `scripts/bump.sh`,
-   `bunfig.toml`, `renovate.json`) → written by the CLI. File policies in
+   `renovate.json`) → written by the CLI. File policies in
    `packages/cli/src/templates/index.ts`:
    - **managed** → 3-way sync via `.udx.json` hashes: untouched-stale files are pulled in by
      `udx sync`, locally modified ones are protected as a conflict (`--force` overwrites)
@@ -49,7 +49,7 @@ Declined building blocks are not a target in `init`/`sync`/`doctor` (not an erro
 - `commands/harness.ts` — shared `init`/`sync` logic
 - `commands/doctor.ts` — read-only drift check
 - `commands/capability.ts` — `adopt`/`skip` (adopt/decline building blocks)
-- `lib/` — `detect` (Svelte detection), `apply` (file engine + `bunfig.toml`),
+- `lib/` — `detect` (Svelte detection), `apply` (file engine + legacy-registry cleanup),
   `manifest` (`.udx.json`: 3-way hashes + declined/adopted building blocks),
   `capabilities` (declinable stack bundles + conflict detection + `--only` resolution),
   `diff` (zero-dep LCS diff for `--diff`), `workspace` (monorepo packages via `Bun.Glob`),
@@ -62,9 +62,9 @@ Declined building blocks are not a target in `init`/`sync`/`doctor` (not an erro
 
 ```bash
 bun install
-bun --filter='@urbicon/udx' run build   # build CLI (bun build → dist/bin/udx.js)
-bun --filter='@urbicon/udx' run test    # bun test
-bun --filter='@urbicon/udx' run check   # tsc --noEmit
+bun --filter='@urbicon-ui/udx' run build   # build CLI (bun build → dist/bin/udx.js)
+bun --filter='@urbicon-ui/udx' run test    # bun test
+bun --filter='@urbicon-ui/udx' run check   # tsc --noEmit
 bun run lint                           # Biome (root)
 bun run fix                            # Biome --write
 ```
@@ -77,7 +77,7 @@ Run the CLI locally without building: `bun run packages/cli/src/bin/udx.ts <comm
   Lefthook, Conventional Commits + git-cliff. When changing templates, think of **both
   sides**: the asset/render **and** whether `init`/`sync`/`doctor` handle it
   correctly.
-- **Biome rules** (`@urbicon/biome-config`): `recommended` + targeted additional rules
+- **Biome rules** (`@urbicon-ui/biome-config`): `recommended` + targeted additional rules
   (`noUnusedVariables`/`noShadow`/`useTopLevelRegex` = `error`, `useExplicitReturnType` =
   `warn`). Extend per policy: avoid nursery (unstable on consumer Biome upgrades →
   the one exception only as `warn`), drop pure style rules + Bun false positives (`Bun` global,
@@ -87,7 +87,7 @@ Run the CLI locally without building: `bun run packages/cli/src/bin/udx.ts <comm
   Dogfooded ⇒ every new rule must have 0 findings (fix consumer code along with it, otherwise
   `bun run lint` breaks).
   (`workspaces.catalog` + `catalogs.svelte`) pinned centrally — the single source of
-  truth. `versions.ts` only *reads* them and derives the consumer pins; `@urbicon/*`
+  truth. `versions.ts` only *reads* them and derives the consumer pins; `@urbicon-ui/*`
   are unified with the CLI version (not in the catalog). The stack is bumped
   **separately from the release `bump.sh`**:
   - **Renovate** (default, `renovate.json`, `rangeStrategy: bump`). Renovate does **not**
@@ -111,11 +111,19 @@ release[:minor|:major]` chains the lot: bump + push + `release:publish`.
 
 ## Distribution
 
-`@urbicon/*` → Codeberg's npm registry, **publicly readable** (no token to install; Bun
-just needs the `@urbicon` scope → registry mapping, which `udx init` writes into
-`bunfig.toml` `[install.scopes]`). Only **publishing** needs a token: `bun publish` reads
-`$CODEBERG_TOKEN` from `.npmrc` (`:_authToken=$CODEBERG_TOKEN`) — Bun interpolates `$VAR`,
-not `${VAR}`, and the file holds only the env reference, not a secret. `bun run release`
+`@urbicon-ui/*` → the **public npm registry** (no token to install, no scope mapping — the
+packages resolve out of the box). Only **publishing** needs a token: `bun publish` reads
+`$NPM_TOKEN` from `.npmrc` (`:_authToken=$NPM_TOKEN`) — Bun interpolates `$VAR`,
+not `${VAR}`, and the file holds only the env reference, not a secret. Scoped packages
+are published publicly via `publishConfig.access` in each package.json.
+The **2026-07 move** (Codeberg → GitHub, own registry → npm) also renamed the scope
+`@urbicon/*` → `@urbicon-ui/*` (`urbicon` was taken on npm). Two migration paths carry
+consumers of udx ≤0.2.9 across, both self-healing via `udx sync`:
+`pruneLegacyRegistry` (`lib/apply.ts`) strips the stale `@urbicon` → Codeberg mapping from
+`bunfig.toml`, and `RENAMED_FROM` (`lib/versions.ts`) swaps each old-scope devDep for its
+successor. Caveat: a create-only config (`biome.json` etc.) still referencing the old
+package makes the preset count as *self-managed* (wiring) — then the dep is deliberately
+left alone until `udx sync --only <id> --force` rewrites the config. `bun run release`
 runs the full pipeline (bump → push → publish, config packages before the CLI);
 `release:publish` alone only publishes. `versions.ts` automatically derives the
-`@urbicon/*` pins from its own version.
+`@urbicon-ui/*` pins from its own version.

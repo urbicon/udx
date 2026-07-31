@@ -1,6 +1,6 @@
 {
   "$schema": "https://json.schemastore.org/tsconfig",
-  "display": "@urbicon/tsconfig base",
+  "display": "@urbicon-ui/tsconfig base",
   "compilerOptions": {
     "allowJs": false,
     "allowSyntheticDefaultImports": true,

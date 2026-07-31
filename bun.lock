@@ -10,41 +10,41 @@
         "@commitlint/config-conventional": "catalog:",
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
-        "@urbicon/biome-config": "workspace:*",
-        "@urbicon/commitlint-config": "workspace:*",
-        "@urbicon/tsconfig": "workspace:*",
+        "@urbicon-ui/biome-config": "workspace:*",
+        "@urbicon-ui/commitlint-config": "workspace:*",
+        "@urbicon-ui/tsconfig": "workspace:*",
         "git-cliff": "catalog:",
         "lefthook": "catalog:",
         "typescript": "catalog:",
       },
     },
     "packages/biome-config": {
-      "name": "@urbicon/biome-config",
-      "version": "0.2.1",
+      "name": "@urbicon-ui/biome-config",
+      "version": "0.2.9",
     },
     "packages/cli": {
-      "name": "@urbicon/udx",
-      "version": "0.2.1",
+      "name": "@urbicon-ui/udx",
+      "version": "0.2.9",
       "bin": {
         "udx": "dist/bin/udx.js",
       },
       "devDependencies": {
         "@types/bun": "catalog:",
         "@types/node": "catalog:",
-        "@urbicon/tsconfig": "workspace:*",
+        "@urbicon-ui/tsconfig": "workspace:*",
         "typescript": "catalog:",
       },
     },
     "packages/commitlint-config": {
-      "name": "@urbicon/commitlint-config",
-      "version": "0.2.1",
+      "name": "@urbicon-ui/commitlint-config",
+      "version": "0.2.9",
       "dependencies": {
         "@commitlint/config-conventional": "catalog:",
         "@commitlint/types": "^21.0.1",
       },
     },
     "packages/svelte-fixture": {
-      "name": "@urbicon/svelte-fixture",
+      "name": "@urbicon-ui/svelte-fixture",
       "version": "0.0.0",
       "devDependencies": {
         "prettier": "catalog:svelte",
@@ -55,8 +55,8 @@
       },
     },
     "packages/tsconfig": {
-      "name": "@urbicon/tsconfig",
-      "version": "0.2.1",
+      "name": "@urbicon-ui/tsconfig",
+      "version": "0.2.9",
     },
   },
   "catalog": {
@@ -166,15 +166,15 @@
 
     "@types/trusted-types": ["@types/trusted-types@2.0.7", "", {}, "sha512-ScaPdn1dQczgbl0QFTeTOmVHFULt394XJgOQNoyVhZ6r2vLnMLJfBPd53SB52T/3G36VI1/g2MZaX0cwDuXsfw=="],
 
-    "@urbicon/biome-config": ["@urbicon/biome-config@workspace:packages/biome-config"],
+    "@urbicon-ui/biome-config": ["@urbicon-ui/biome-config@workspace:packages/biome-config"],
 
-    "@urbicon/commitlint-config": ["@urbicon/commitlint-config@workspace:packages/commitlint-config"],
+    "@urbicon-ui/commitlint-config": ["@urbicon-ui/commitlint-config@workspace:packages/commitlint-config"],
 
-    "@urbicon/svelte-fixture": ["@urbicon/svelte-fixture@workspace:packages/svelte-fixture"],
+    "@urbicon-ui/svelte-fixture": ["@urbicon-ui/svelte-fixture@workspace:packages/svelte-fixture"],
 
-    "@urbicon/tsconfig": ["@urbicon/tsconfig@workspace:packages/tsconfig"],
+    "@urbicon-ui/tsconfig": ["@urbicon-ui/tsconfig@workspace:packages/tsconfig"],
 
-    "@urbicon/udx": ["@urbicon/udx@workspace:packages/cli"],
+    "@urbicon-ui/udx": ["@urbicon-ui/udx@workspace:packages/cli"],
 
     "acorn": ["acorn@8.16.0", "", { "bin": { "acorn": "bin/acorn" } }, "sha512-UVJyE9MttOsBQIDKw1skb9nAwQuR5wuGD3+82K6JgJlm/Y+KI92oNsMNGZCYdDsVtRHSak0pcV5Dno5+4jh9sw=="],
 

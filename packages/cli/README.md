@@ -1,15 +1,14 @@
-# @urbicon/udx
+# @urbicon-ui/udx
 
 CLI for setting up and **synchronizing** the urbicon development harness in
 Bun/Svelte projects. Writes the non-extensible files (cliff.toml,
-Lefthook hooks, bump.sh, bunfig.toml, renovate.json) and wires up the extensible config packages
-(`@urbicon/biome-config`, `@urbicon/commitlint-config`, `@urbicon/tsconfig`).
+Lefthook hooks, bump.sh, renovate.json) and wires up the extensible config packages
+(`@urbicon-ui/biome-config`, `@urbicon-ui/commitlint-config`, `@urbicon-ui/tsconfig`).
 
 ## Installation
 
 ```bash
-# Prerequisite: @urbicon scope set globally in ~/.bunfig.toml (public registry — no token)
-bun add -g @urbicon/udx
+bun add -g @urbicon-ui/udx
 ```
 
 Local development from this repo:
@@ -54,9 +53,26 @@ cd packages/cli && bun link        # make available globally
 
 (* Svelte projects only.)
 
-`bunfig.toml` is handled **additively**: if the `@urbicon` scope is missing, it is
-added (or the file is created); an already-present `[install.scopes]` block
-is not touched — instead the line to be added is reported.
+`bunfig.toml` needs no `@urbicon-ui` scope mapping (the packages come from the public npm
+registry). Projects set up by udx ≤0.2.9 carry a mapping to the old Codeberg registry —
+`udx sync` removes it, since it would otherwise keep resolving to those frozen copies.
+
+## Migrating a project from udx ≤0.2.9
+
+Those projects use the old `@urbicon/*` scope on Codeberg, which receives no further
+releases. `udx sync` handles most of it: it drops the stale `bunfig.toml` mapping and
+replaces each `@urbicon/*` devDep with its `@urbicon-ui/*` successor.
+
+One step needs a decision, because the consuming configs are **create-only** and udx never
+rewrites them unasked: as long as `biome.json`, `tsconfig.json` or `commitlint.config.mjs`
+still reference the old package, that preset counts as *self-managed* and its dep is left
+alone. `doctor`/`status` report it as "not wired". Either adjust the reference by hand
+(`@urbicon/…` → `@urbicon-ui/…`) or let udx rewrite the config:
+
+```bash
+udx sync --only biome --force        # likewise: commitlint, tsconfig
+udx sync                             # then swaps the dep and cleans up
+```
 
 `package.json` is patched idempotently: missing scripts/devDeps are added;
 diverging values are left as-is and reported (`--force` overwrites).

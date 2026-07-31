@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Version bump + changelog + annotated tag (Conventional Commits -> git-cliff).
-# Managed by @urbicon/udx — push changes back via `udx sync`.
+# Managed by @urbicon-ui/udx — push changes back via `udx sync`.
 # Bun-native (no node/npm required). Unified versioning: if a packages/ folder
 # exists, all non-private sub-packages get the same version as the root package.
 #

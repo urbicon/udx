@@ -1,4 +1,4 @@
-import { type ApplyOptions, applyFiles, type FileResult, URBICON_REGISTRY } from '../lib/apply.ts';
+import { type ApplyOptions, applyFiles, type FileResult, LEGACY_REGISTRY } from '../lib/apply.ts';
 import { declinedSets, resolveCapabilities } from '../lib/capabilities.ts';
 import { c } from '../lib/colors.ts';
 import { detectContext, type ProjectContext } from '../lib/detect.ts';
@@ -176,7 +176,7 @@ export function buildReport(flags: StatusFlags): {
   const declined = declinedSets(capStates);
   const pinned = new Set(Object.keys(manifest.pinned));
 
-  // Wiring: self-managed configs ⇒ their @urbicon preset dep doesn't count as a target
+  // Wiring: self-managed configs ⇒ their @urbicon-ui preset dep doesn't count as a target
   // (neither missing nor "in sync"), but instead shows up below as its own row.
   const wiring = detectWiring(ctx);
   const wiringSkip = wiringSkipDeps(wiring);
@@ -242,18 +242,20 @@ export function buildReport(flags: StatusFlags): {
   if (inSync > 0)
     pkg.push({ state: 'sync', label: `${inSync} more`, detail: 'scripts & devDeps in sync' });
 
+  // @urbicon-ui resolves from the public npm registry without a scope mapping — so the row
+  // only appears for projects still carrying the old Codeberg pin.
   const bunfig = abs(ctx.cwd, 'bunfig.toml');
-  const hasRegistry = exists(bunfig) && readText(bunfig).includes(URBICON_REGISTRY);
-  const registry: Row[] = [
-    hasRegistry
-      ? { state: 'sync', label: 'bunfig.toml', detail: '@urbicon registry configured' }
-      : {
-          state: 'missing',
-          label: 'bunfig.toml',
-          detail: '@urbicon registry missing',
-          cmd: 'udx sync'
-        }
-  ];
+  const registry: Row[] =
+    exists(bunfig) && readText(bunfig).includes(LEGACY_REGISTRY)
+      ? [
+          {
+            state: 'missing',
+            label: 'bunfig.toml',
+            detail: 'pinned to the old Codeberg registry',
+            cmd: 'udx sync'
+          }
+        ]
+      : [];
 
   // Actively offer self-managed configs: adopt them or keep your own.
   const wiringRows: Row[] = wiring

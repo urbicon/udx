@@ -1,4 +1,4 @@
-# @urbicon/udx
+# @urbicon-ui/udx
 
 Shared **development harness** for Bun and Svelte/SvelteKit projects. One place
 for configs, tooling, and Claude skills that used to be copied between projects by
@@ -8,35 +8,27 @@ hand — including a mechanism to **feed improvements back**.
 
 | Package / folder             | Role                                                                 |
 | ---------------------------- | -------------------------------------------------------------------- |
-| `@urbicon/tsconfig`          | TypeScript base config (`base.json` + `svelte.json`)                |
-| `@urbicon/biome-config`      | Biome formatter + linter (replaces Prettier + ESLint for TS/JS/JSON) |
-| `@urbicon/commitlint-config` | Conventional Commits with a scope factory                           |
-| `@urbicon/udx` (CLI)          | `udx init` / `udx sync` / `udx doctor` — distributes & updates everything |
+| `@urbicon-ui/tsconfig`          | TypeScript base config (`base.json` + `svelte.json`)                |
+| `@urbicon-ui/biome-config`      | Biome formatter + linter (replaces Prettier + ESLint for TS/JS/JSON) |
+| `@urbicon-ui/commitlint-config` | Conventional Commits with a scope factory                           |
+| `@urbicon-ui/udx` (CLI)          | `udx init` / `udx sync` / `udx doctor` — distributes & updates everything |
 
 ## Two kinds of building blocks
 
 1. **Extensible** (Biome, commitlint, tsconfig) → as packages; update via
    `bun update`. The content lives centrally in the package.
 2. **Must physically exist** (`cliff.toml`, `lefthook.yml`, `scripts/bump.sh`,
-   `bunfig.toml`, `renovate.json`) → written/updated by the `udx` CLI. `udx sync`
+   `renovate.json`) → written/updated by the `udx` CLI. `udx sync`
    pulls in changes.
 
 ## Quick start in a project
 
-The `@urbicon/*` packages live in Codeberg's **public** npm registry — no token
-needed to install. Bun only needs to know which registry serves the `@urbicon`
-scope. Set it once per machine in `~/.bunfig.toml`:
-
-```toml
-[install.scopes]
-"@urbicon" = "https://codeberg.org/api/packages/urbicon/npm/"
-```
-
-Then, in any project:
+The `@urbicon-ui/*` packages are published to the **public npm registry** — nothing to
+configure, no token to install:
 
 ```bash
-# 1. Set up the harness — also writes a project-local bunfig.toml with the scope
-bunx @urbicon/udx init        # or: udx init (globally installed)
+# 1. Set up the harness
+bunx @urbicon-ui/udx init        # or: udx init (globally installed)
 bun install                   # deps + git hooks (via prepare script)
 
 # 2. Pull in improvements later
@@ -60,18 +52,18 @@ udx doctor                    # check drift
 
 ```bash
 bun install
-bun --filter='@urbicon/udx' run build   # build the CLI
-bun --filter='@urbicon/udx' run test    # test the CLI
+bun --filter='@urbicon-ui/udx' run build   # build the CLI
+bun --filter='@urbicon-ui/udx' run test    # test the CLI
 bun run lint                           # Biome
 ```
 
-## Publishing (Codeberg registry)
+## Publishing (npm)
 
-The `@urbicon/*` packages are published to Codeberg's npm registry. They are
-**publicly readable** (no token to install); only **publishing** needs a
-`CODEBERG_TOKEN` (a Forgejo PAT with scope `package: read+write`) in the
-environment or a gitignored `.env`. `bun publish` reads it from `.npmrc`
-(`…:_authToken=$CODEBERG_TOKEN`) — the file holds only the env reference, no secret.
+The `@urbicon-ui/*` packages are published to the public npm registry. Installing needs
+no token; only **publishing** does — an `NPM_TOKEN` (automation token with publish
+rights for the `@urbicon-ui` scope) in the environment or a gitignored `.env`. `bun
+publish` reads it from `.npmrc` (`…:_authToken=$NPM_TOKEN`) — the file holds only the
+env reference, no secret. Scoped packages go out public via `publishConfig.access`.
 
 ```bash
 # 1. Prepare the release (version + changelog + tag, unified across all packages)

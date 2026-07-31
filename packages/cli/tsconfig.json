@@ -1,5 +1,5 @@
 {
-  "extends": "@urbicon/tsconfig/base.json",
+  "extends": "@urbicon-ui/tsconfig/base.json",
   "compilerOptions": {
     "noEmit": true,
     "allowImportingTsExtensions": true

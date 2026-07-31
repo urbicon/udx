@@ -1,12 +1,21 @@
 {
-  "name": "@urbicon/commitlint-config",
+  "name": "@urbicon-ui/commitlint-config",
   "version": "0.2.9",
   "description": "Shared commitlint configuration (Conventional Commits) with scope factory",
   "type": "module",
   "author": "Felix Urban",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/urbicon/udx.git",
+    "directory": "packages/commitlint-config"
+  },
+  "homepage": "https://github.com/urbicon/udx/tree/main/packages/commitlint-config",
+  "bugs": {
+    "url": "https://github.com/urbicon/udx/issues"
+  },
   "publishConfig": {
-    "registry": "https://codeberg.org/api/packages/urbicon/npm/"
+    "access": "public"
   },
   "main": "index.js",
   "types": "index.d.ts",

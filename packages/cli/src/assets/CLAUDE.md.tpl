@@ -2,19 +2,19 @@
 
 ## Development harness
 
-This project uses the shared **@urbicon/udx** harness. Update with `udx sync`.
+This project uses the shared **@urbicon-ui/udx** harness. Update with `udx sync`.
 
 ### Tools
 
 | Area          | Tool                                              |
 | ------------- | ------------------------------------------------- |
-| Format/Lint   | Biome (`@urbicon/biome-config`)                   |
+| Format/Lint   | Biome (`@urbicon-ui/biome-config`)                   |
 | Svelte format | Prettier + `prettier-plugin-svelte` (`.svelte` only) |
-| Commits       | Conventional Commits (`@urbicon/commitlint-config`) |
+| Commits       | Conventional Commits (`@urbicon-ui/commitlint-config`) |
 | Changelog     | git-cliff (`cliff.toml`)                           |
 | Git hooks     | Lefthook (`lefthook.yml`)                          |
 | Versioning    | `scripts/bump.sh` → `bun run bump[:minor|:major]`  |
-| TS config     | `@urbicon/tsconfig`                                |
+| TS config     | `@urbicon-ui/tsconfig`                                |
 | Dep updates   | Renovate (`renovate.json`)                         |
 
 ### Commands

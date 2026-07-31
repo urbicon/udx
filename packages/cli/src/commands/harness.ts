@@ -1,5 +1,10 @@
 import { basename } from 'node:path';
-import { type ApplyOptions, applyFiles, ensureBunfig, type FileResult } from '../lib/apply.ts';
+import {
+  type ApplyOptions,
+  applyFiles,
+  type FileResult,
+  pruneLegacyRegistry
+} from '../lib/apply.ts';
 import {
   type CapabilityState,
   type DeclinedSets,
@@ -146,7 +151,7 @@ interface PatchShared {
   declined: DeclinedSets;
   only: PkgSet | undefined;
   pinned: ReadonlySet<string>;
-  /** Self-managed @urbicon preset deps (wiring) — do not add. */
+  /** Self-managed @urbicon-ui preset deps (wiring) — do not add. */
   wiringSkip: ReadonlySet<string>;
   /**
    * Mutable catalog working object of the consumer (read from the root pkg); `null` ⇒ literal mode
@@ -427,7 +432,10 @@ export function runHarness(
     declined.files,
     onlyFiles
   );
-  if (!selection) results.push(ensureBunfig(ctx.cwd, flags.dryRun));
+  if (!selection) {
+    const pruned = pruneLegacyRegistry(ctx.cwd, flags.dryRun);
+    if (pruned) results.push(pruned);
+  }
   for (const r of results) {
     reportAction(r.action, r.dest, r.note);
     if (r.diff) log.block(r.diff);

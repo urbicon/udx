@@ -2,7 +2,7 @@ import rootPkg from '../../../../package.json' with { type: 'json' };
 import cliPkg from '../../package.json' with { type: 'json' };
 
 /**
- * The @urbicon config packages are versioned in unison — they always carry the same
+ * The @urbicon-ui config packages are versioned in unison — they always carry the same
  * version as this CLI (see scripts/bump.sh). Therefore derive it from the own package.json
  * instead of hardcoding: a release pulls the consumer pins along automatically
  * (assuming a fresh build, which prepublishOnly guarantees).
@@ -37,12 +37,19 @@ export const TOOL_DEPS = [
 ] as const;
 
 /**
- * Former names of a tool dep (new → old). `udx sync` removes the old name when it writes the
+ * Former names of a dep (new → old). `udx sync` removes the old name when it writes the
  * new one — otherwise existing projects would keep both around (e.g. `bun-types` next to
  * `@types/bun`, which produces duplicate Bun globals when the versions diverge).
+ * The `@urbicon/*` entries cover the 2026-07 scope move to `@urbicon-ui/*`: the old scope
+ * only ever existed on Codeberg and receives no further releases. Note that a consumer whose
+ * config still *references* the old package counts as self-managed (wiring), so the swap only
+ * happens once the config points at the new name — `udx sync --only <id> --force` rewrites it.
  */
 export const RENAMED_FROM: Partial<Record<DepName, string>> = {
-  '@types/bun': 'bun-types'
+  '@types/bun': 'bun-types',
+  '@urbicon-ui/biome-config': '@urbicon/biome-config',
+  '@urbicon-ui/commitlint-config': '@urbicon/commitlint-config',
+  '@urbicon-ui/tsconfig': '@urbicon/tsconfig'
 };
 
 /** Deps written only into Svelte projects (from the `svelte` catalog). */
@@ -55,9 +62,9 @@ export const SVELTE_DEPS = [
 
 /** udx's own config packages — unified with the CLI version, hence not in the catalog. */
 export const URBICON_DEPS = [
-  '@urbicon/biome-config',
-  '@urbicon/commitlint-config',
-  '@urbicon/tsconfig'
+  '@urbicon-ui/biome-config',
+  '@urbicon-ui/commitlint-config',
+  '@urbicon-ui/tsconfig'
 ] as const;
 
 export type DepName =
@@ -91,7 +98,7 @@ function pick<N extends readonly string[]>(
 export const VERSIONS: Record<DepName, string> = {
   ...pick(ws.catalog, TOOL_DEPS),
   ...pick(ws.catalogs.svelte, SVELTE_DEPS),
-  '@urbicon/biome-config': SELF,
-  '@urbicon/commitlint-config': SELF,
-  '@urbicon/tsconfig': SELF
+  '@urbicon-ui/biome-config': SELF,
+  '@urbicon-ui/commitlint-config': SELF,
+  '@urbicon-ui/tsconfig': SELF
 };

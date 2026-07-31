@@ -1,4 +1,4 @@
-# @urbicon/biome-config
+# @urbicon-ui/biome-config
 
 Shared [Biome](https://biomejs.dev) base configuration (formatter + linter).
 
@@ -9,7 +9,7 @@ import sorting.
 ## Installation
 
 ```bash
-bun add -D @biomejs/biome @urbicon/biome-config
+bun add -D @biomejs/biome @urbicon-ui/biome-config
 ```
 
 ## Usage
@@ -18,7 +18,7 @@ bun add -D @biomejs/biome @urbicon/biome-config
 // biome.json
 {
   "$schema": "https://biomejs.dev/schemas/2.4.16/schema.json",
-  "extends": ["@urbicon/biome-config/biome-base.json"]
+  "extends": ["@urbicon-ui/biome-config/biome-base.json"]
 }
 ```
 
@@ -31,7 +31,7 @@ while Biome handles the rest. Exclude the `.svelte` files from Biome:
 ```jsonc
 // biome.json
 {
-  "extends": ["@urbicon/biome-config/biome-base.json"],
+  "extends": ["@urbicon-ui/biome-config/biome-base.json"],
   "files": {
     "includes": ["**", "!**/*.svelte"]
   }

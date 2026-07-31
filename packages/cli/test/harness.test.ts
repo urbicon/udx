@@ -8,7 +8,12 @@ import { installPlan, runHarness } from '../src/commands/harness.ts';
 import { helpText } from '../src/commands/help.ts';
 import { runPin, runUnpin } from '../src/commands/pin.ts';
 import { buildReport, runStatus } from '../src/commands/status.ts';
-import { type ApplyOptions, applyFiles, ensureBunfig, URBICON_REGISTRY } from '../src/lib/apply.ts';
+import {
+  type ApplyOptions,
+  applyFiles,
+  LEGACY_REGISTRY,
+  pruneLegacyRegistry
+} from '../src/lib/apply.ts';
 import {
   CAPABILITIES,
   declinedSets,
@@ -34,7 +39,13 @@ import {
   raise,
   satisfiesPin
 } from '../src/lib/pkg.ts';
-import { SVELTE_DEPS, TOOL_DEPS, VERSIONS } from '../src/lib/versions.ts';
+import {
+  RENAMED_FROM,
+  SVELTE_DEPS,
+  TOOL_DEPS,
+  URBICON_DEPS,
+  VERSIONS
+} from '../src/lib/versions.ts';
 import { detectWiring, wiringSkipDeps } from '../src/lib/wiring.ts';
 import { isTypeScriptPackage, resolveWorkspaces } from '../src/lib/workspace.ts';
 import { FILE_TEMPLATES } from '../src/templates/index.ts';
@@ -628,6 +639,48 @@ describe('Renamed tool deps (bun-types → @types/bun)', () => {
   });
 });
 
+describe('Scope move (@urbicon/* → @urbicon-ui/*)', () => {
+  /** A consumer set up before the move: old scope in the deps, config already rewired. */
+  const legacyConsumer = (): string => {
+    const dir = project({
+      name: 'x',
+      devDependencies: { '@urbicon/biome-config': '^0.2.9' }
+    });
+    // wiring must see the new name, otherwise the preset counts as self-managed and is skipped
+    writeFileSync(
+      join(dir, 'biome.json'),
+      '{ "extends": ["@urbicon-ui/biome-config/biome-base.json"] }\n'
+    );
+    return dir;
+  };
+
+  test('every old-scope package maps to its @urbicon-ui successor', () => {
+    for (const dep of URBICON_DEPS) {
+      expect(RENAMED_FROM[dep]).toBe(dep.replace('@urbicon-ui/', '@urbicon/'));
+    }
+  });
+
+  test('plans removal of the old scope alongside the successor', () => {
+    const plan = computePkgPlan(detectContext(legacyConsumer()));
+    expect(plan.devDepsToAdd.some((d) => d.name === '@urbicon-ui/biome-config')).toBe(true);
+    expect(plan.devDepsToRemove).toContainEqual({
+      name: '@urbicon/biome-config',
+      from: '^0.2.9',
+      to: '@urbicon-ui/biome-config'
+    });
+  });
+
+  test('sync leaves no old-scope dep behind', () => {
+    const dir = legacyConsumer();
+    runHarness('sync', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+    expect(pkg.devDependencies['@urbicon/biome-config']).toBeUndefined();
+    expect(pkg.devDependencies['@urbicon-ui/biome-config']).toBe(
+      VERSIONS['@urbicon-ui/biome-config']
+    );
+  });
+});
+
 describe('resolveSelection (--only)', () => {
   const fileIds = new Set(FILE_TEMPLATES.map((t) => t.id));
 
@@ -1119,13 +1172,13 @@ describe('computePkgPlan catalog mode (D9 WP2)', () => {
     expect(plan.catalogEntriesToAdd).toEqual([]);
   });
 
-  test('@urbicon/* stay literal (never in the catalog)', () => {
+  test('@urbicon-ui/* stay literal (never in the catalog)', () => {
     const ctx = detectContext(project({ name: 'x' }));
-    const plan = computePkgPlan(ctx, only('@urbicon/tsconfig'), undefined, empty);
+    const plan = computePkgPlan(ctx, only('@urbicon-ui/tsconfig'), undefined, empty);
     expect(plan.catalogEntriesToAdd).toEqual([]);
     expect(plan.devDepsToCatalog).toEqual([]);
     expect(plan.devDepsToAdd).toEqual([
-      { name: '@urbicon/tsconfig', to: VERSIONS['@urbicon/tsconfig'] }
+      { name: '@urbicon-ui/tsconfig', to: VERSIONS['@urbicon-ui/tsconfig'] }
     ]);
   });
 
@@ -1224,9 +1277,9 @@ describe('Catalog writes via runHarness (D9 WP3)', () => {
     expect(root.devDependencies.typescript).toBe('catalog:');
     expect(root.workspaces.catalog['@biomejs/biome']).toBe(VERSIONS['@biomejs/biome']);
     expect(root.workspaces.catalog.typescript).toBe(VERSIONS.typescript);
-    // @urbicon/* stay literal (D9-D), never in the catalog:
-    expect(root.devDependencies['@urbicon/tsconfig']).toBe(VERSIONS['@urbicon/tsconfig']);
-    expect(root.workspaces.catalog['@urbicon/tsconfig']).toBeUndefined();
+    // @urbicon-ui/* stay literal (D9-D), never in the catalog:
+    expect(root.devDependencies['@urbicon-ui/tsconfig']).toBe(VERSIONS['@urbicon-ui/tsconfig']);
+    expect(root.workspaces.catalog['@urbicon-ui/tsconfig']).toBeUndefined();
     // workspaces.packages stays intact:
     expect(root.workspaces.packages).toEqual(['packages/*']);
   });
@@ -1706,26 +1759,26 @@ describe('Wiring', () => {
     expect(statusOf(dir, 'tsconfig')).toBe('absent');
   });
 
-  test('wired: config references the @urbicon package', () => {
+  test('wired: config references the @urbicon-ui package', () => {
     const dir = project({ name: 'x' });
     writeFileSync(
       join(dir, 'biome.json'),
-      JSON.stringify({ extends: ['@urbicon/biome-config/biome-base.json'] })
+      JSON.stringify({ extends: ['@urbicon-ui/biome-config/biome-base.json'] })
     );
     writeFileSync(
       join(dir, 'commitlint.config.mjs'),
-      "import { createConfig } from '@urbicon/commitlint-config';\n"
+      "import { createConfig } from '@urbicon-ui/commitlint-config';\n"
     );
     writeFileSync(
       join(dir, 'tsconfig.json'),
-      JSON.stringify({ extends: '@urbicon/tsconfig/base.json' })
+      JSON.stringify({ extends: '@urbicon-ui/tsconfig/base.json' })
     );
     expect(statusOf(dir, 'biome')).toBe('wired');
     expect(statusOf(dir, 'commitlint')).toBe('wired');
     expect(statusOf(dir, 'tsconfig')).toBe('wired');
   });
 
-  test('self-managed: config exists but does not reference @urbicon', () => {
+  test('self-managed: config exists but does not reference @urbicon-ui', () => {
     const dir = project({ name: 'x' });
     writeFileSync(join(dir, 'biome.json'), JSON.stringify({ extends: ['./eigene.json'] }));
     writeFileSync(
@@ -1742,16 +1795,16 @@ describe('Wiring', () => {
     expect(statusOf(dir, 'commitlint')).toBe('self-managed');
   });
 
-  test('tsconfig in a monorepo: wired when a package extends @urbicon/tsconfig', () => {
+  test('tsconfig in a monorepo: wired when a package extends @urbicon-ui/tsconfig', () => {
     const dir = monorepo();
     writeFileSync(
       join(dir, 'packages/api/tsconfig.json'),
-      JSON.stringify({ extends: '@urbicon/tsconfig/base.json' })
+      JSON.stringify({ extends: '@urbicon-ui/tsconfig/base.json' })
     );
     expect(statusOf(dir, 'tsconfig')).toBe('wired');
   });
 
-  test('tsconfig in a monorepo: self-managed when no tsconfig extends @urbicon', () => {
+  test('tsconfig in a monorepo: self-managed when no tsconfig extends @urbicon-ui', () => {
     const dir = monorepo();
     writeFileSync(join(dir, 'packages/api/tsconfig.json'), JSON.stringify({ compilerOptions: {} }));
     expect(statusOf(dir, 'tsconfig')).toBe('self-managed');
@@ -1764,11 +1817,11 @@ describe('Wiring', () => {
       "export default { extends: ['@commitlint/config-conventional'] };\n"
     );
     const skip = wiringSkipDeps(detectWiring(detectContext(dir)));
-    expect(skip.has('@urbicon/commitlint-config')).toBe(true); // self-managed
-    expect(skip.has('@urbicon/biome-config')).toBe(false); // absent ⇒ no skip
+    expect(skip.has('@urbicon-ui/commitlint-config')).toBe(true); // self-managed
+    expect(skip.has('@urbicon-ui/biome-config')).toBe(false); // absent ⇒ no skip
   });
 
-  test('gating: self-managed config → @urbicon dep is not "missing" but a wiring row', () => {
+  test('gating: self-managed config → @urbicon-ui dep is not "missing" but a wiring row', () => {
     const dir = project({ name: 'x' });
     writeFileSync(
       join(dir, 'commitlint.config.mjs'),
@@ -1776,7 +1829,7 @@ describe('Wiring', () => {
     );
     const report = buildReport({ cwd: dir, svelte: false, json: false });
     const pkgRows = report.sections.find((s) => s.title === 'package.json')?.rows ?? [];
-    expect(pkgRows.some((r) => r.label === '@urbicon/commitlint-config')).toBe(false);
+    expect(pkgRows.some((r) => r.label === '@urbicon-ui/commitlint-config')).toBe(false);
     const wiringRows = report.sections.find((s) => s.title === 'Wiring')?.rows ?? [];
     const row = wiringRows.find((r) => r.label === 'commitlint.config.mjs');
     expect(row?.state).toBe('unwired');
@@ -1798,7 +1851,7 @@ describe('applyFiles create-only replacement (--only + --force)', () => {
       new Set(['commitlint'])
     );
     expect(readFileSync(join(dir, 'commitlint.config.mjs'), 'utf8')).toContain(
-      '@urbicon/commitlint-config'
+      '@urbicon-ui/commitlint-config'
     );
     expect(res.find((r) => r.id === 'commitlint')?.action).toBe('updated');
   });
@@ -1819,42 +1872,64 @@ describe('applyFiles create-only replacement (--only + --force)', () => {
   });
 });
 
-describe('ensureBunfig', () => {
-  test('creates bunfig.toml with the @urbicon scope', () => {
-    const dir = project({ name: 'x' });
-    expect(ensureBunfig(dir, false).action).toBe('created');
-    const content = readFileSync(join(dir, 'bunfig.toml'), 'utf8');
-    expect(content).toContain('[install.scopes]');
-    expect(content).toContain(URBICON_REGISTRY);
+describe('pruneLegacyRegistry', () => {
+  /** Exactly the block udx ≤0.2.9 wrote into consumer projects. */
+  const legacyBlock =
+    "# @urbicon packages from Codeberg's public registry — no token needed to install.\n" +
+    `[install.scopes]\n"@urbicon" = "${LEGACY_REGISTRY}"\n`;
+
+  test('stays silent when there is no bunfig.toml', () => {
+    expect(pruneLegacyRegistry(project({ name: 'x' }), false)).toBeNull();
   });
 
-  test('is idempotent (an existing registry URL stays unchanged)', () => {
-    const dir = project({ name: 'x' });
-    ensureBunfig(dir, false);
-    expect(ensureBunfig(dir, false).action).toBe('unchanged');
-  });
-
-  test('appends the block to a bunfig.toml without install.scopes', () => {
+  test('stays silent for a bunfig.toml without the legacy registry', () => {
     const dir = project({ name: 'x' });
     writeFileSync(join(dir, 'bunfig.toml'), '[test]\ncoverage = true\n');
-    expect(ensureBunfig(dir, false).action).toBe('updated');
-    const content = readFileSync(join(dir, 'bunfig.toml'), 'utf8');
-    expect(content).toContain('[test]');
-    expect(content).toContain(URBICON_REGISTRY);
+    expect(pruneLegacyRegistry(dir, false)).toBeNull();
   });
 
-  test('skips an existing install.scopes block losslessly', () => {
+  test('removes the file when the legacy block was all it contained', () => {
     const dir = project({ name: 'x' });
-    const orig = '[install.scopes]\n"@other" = { url = "https://example.com/" }\n';
-    writeFileSync(join(dir, 'bunfig.toml'), orig);
-    expect(ensureBunfig(dir, false).action).toBe('skipped');
-    expect(readFileSync(join(dir, 'bunfig.toml'), 'utf8')).toBe(orig);
-  });
-
-  test('dry-run writes nothing', () => {
-    const dir = project({ name: 'x' });
-    expect(ensureBunfig(dir, true).action).toBe('would-create');
+    writeFileSync(join(dir, 'bunfig.toml'), legacyBlock);
+    expect(pruneLegacyRegistry(dir, false)?.action).toBe('updated');
     expect(existsSync(join(dir, 'bunfig.toml'))).toBe(false);
+  });
+
+  test('keeps unrelated settings and drops only the legacy block', () => {
+    const dir = project({ name: 'x' });
+    writeFileSync(join(dir, 'bunfig.toml'), `[test]\ncoverage = true\n\n${legacyBlock}`);
+    expect(pruneLegacyRegistry(dir, false)?.action).toBe('updated');
+    const content = readFileSync(join(dir, 'bunfig.toml'), 'utf8');
+    expect(content).toContain('coverage = true');
+    expect(content).not.toContain(LEGACY_REGISTRY);
+    expect(content).not.toContain('[install.scopes]');
+  });
+
+  test('drops only its own line from a shared install.scopes block', () => {
+    const dir = project({ name: 'x' });
+    writeFileSync(
+      join(dir, 'bunfig.toml'),
+      `[install.scopes]\n"@other" = "https://example.com/"\n"@urbicon" = "${LEGACY_REGISTRY}"\n`
+    );
+    expect(pruneLegacyRegistry(dir, false)?.action).toBe('updated');
+    const content = readFileSync(join(dir, 'bunfig.toml'), 'utf8');
+    expect(content).toContain('[install.scopes]');
+    expect(content).toContain('"@other"');
+    expect(content).not.toContain(LEGACY_REGISTRY);
+  });
+
+  test('is idempotent — a second run has nothing left to do', () => {
+    const dir = project({ name: 'x' });
+    writeFileSync(join(dir, 'bunfig.toml'), `[test]\ncoverage = true\n\n${legacyBlock}`);
+    pruneLegacyRegistry(dir, false);
+    expect(pruneLegacyRegistry(dir, false)).toBeNull();
+  });
+
+  test('dry-run reports but writes nothing', () => {
+    const dir = project({ name: 'x' });
+    writeFileSync(join(dir, 'bunfig.toml'), legacyBlock);
+    expect(pruneLegacyRegistry(dir, true)?.action).toBe('would-update');
+    expect(readFileSync(join(dir, 'bunfig.toml'), 'utf8')).toBe(legacyBlock);
   });
 });
 
@@ -1987,13 +2062,13 @@ describe('applyFiles --diff', () => {
 });
 
 describe('Versioning', () => {
-  test('@urbicon pins match the own package version (unified)', () => {
+  test('@urbicon-ui pins match the own package version (unified)', () => {
     const own = JSON.parse(
       readFileSync(join(import.meta.dir, '..', 'package.json'), 'utf8')
     ).version;
-    expect(VERSIONS['@urbicon/biome-config']).toBe(`^${own}`);
-    expect(VERSIONS['@urbicon/commitlint-config']).toBe(`^${own}`);
-    expect(VERSIONS['@urbicon/tsconfig']).toBe(`^${own}`);
+    expect(VERSIONS['@urbicon-ui/biome-config']).toBe(`^${own}`);
+    expect(VERSIONS['@urbicon-ui/commitlint-config']).toBe(`^${own}`);
+    expect(VERSIONS['@urbicon-ui/tsconfig']).toBe(`^${own}`);
   });
 
   test('VERSIONS mirror the root catalog (single source: tool + Svelte)', () => {

@@ -1,4 +1,4 @@
-import { URBICON_REGISTRY } from '../lib/apply.ts';
+import { LEGACY_REGISTRY } from '../lib/apply.ts';
 import { declinedSets, resolveCapabilities } from '../lib/capabilities.ts';
 import { c } from '../lib/colors.ts';
 import { detectContext } from '../lib/detect.ts';
@@ -178,12 +178,14 @@ export function runDoctor(flags: DoctorFlags): number {
     }
   }
 
-  log.plain();
-  log.step('Registry');
+  // @urbicon-ui lives on the public npm registry — no scope mapping needed. Only a leftover
+  // mapping is worth reporting: it would keep resolving to the frozen Codeberg copies.
   const bunfig = abs(ctx.cwd, 'bunfig.toml');
-  if (exists(bunfig) && readText(bunfig).includes(URBICON_REGISTRY))
-    pass('bunfig.toml @urbicon registry');
-  else fail('bunfig.toml @urbicon registry missing');
+  if (exists(bunfig) && readText(bunfig).includes(LEGACY_REGISTRY)) {
+    log.plain();
+    log.step('Registry');
+    warn('bunfig.toml pins @urbicon to the old Codeberg registry — `udx sync`');
+  }
 
   const selfManaged = wiring.filter((w) => w.status === 'self-managed');
   if (selfManaged.length > 0) {

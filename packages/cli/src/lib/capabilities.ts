@@ -58,7 +58,7 @@ export const CAPABILITIES: Capability[] = [
     // then comes to nothing (harmless).
     devDeps: [
       '@biomejs/biome',
-      '@urbicon/biome-config',
+      '@urbicon-ui/biome-config',
       'prettier-plugin-svelte',
       'prettier-plugin-tailwindcss',
       'svelte-check'

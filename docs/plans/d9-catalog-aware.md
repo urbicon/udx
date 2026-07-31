@@ -33,7 +33,7 @@ catalog, `catalog:` instead of literal, never a downgrade) **and** writes Svelte
 - **D9-C placement (tiers):** *root* (repo-global tools + TS toolchain + non-svelte lint/format) at the
   root; *svelte* (SVELTE_DEPS + svelte-flavored lint/format) per Svelte package. **Non-svelte TS packages
   get no own devDeps** (Bun hoisting; keeps the blast radius limited to Svelte packages).
-- **D9-D `@urbicon/*` always stay literal** (`^${CLI_VERSION}`, unified with the CLI version; never in the catalog).
+- **D9-D `@urbicon-ui/*` always stay literal** (`^${CLI_VERSION}`, unified with the CLI version; never in the catalog).
 - **D9-E never downgrade.** Catalog entry = maximum of (catalog value, **all** literal devDep
   occurrences across all packages, pin), operator preserved (`raise`). Accumulation via a shared
   catalog working object threaded through all package patches; the root pkg is written exactly once.
@@ -52,7 +52,7 @@ package scripts (`bun --filter`).
 
 ### WP2 — Catalog read model + plan arrays (pure)  ✅ committed (`f842e24`) + reviewed
 - [x] `lib/catalog.ts`: `readCatalogTables` (trigger), `selectCatalogTable` (D9-B). `pkg.ts`: `raise` (operator-preserving, never a downgrade), `isVersionRange`.
-- [x] `PkgPlan` +3 arrays (`catalogEntriesToAdd`/`Drift`/`devDepsToCatalog`); `computePkgPlan(…, catalog)`: @urbicon literal, pin before catalog logic, drift against the table value, atomicity invariant.
+- [x] `PkgPlan` +3 arrays (`catalogEntriesToAdd`/`Drift`/`devDepsToCatalog`); `computePkgPlan(…, catalog)`: @urbicon-ui literal, pin before catalog logic, drift against the table value, atomicity invariant.
 - [x] Review → finding fixed: `raise` hardens compound/leading-`<` ranges (uses the pin instead of a broken range), preserves build metadata.
 
 ### WP3 — Atomic catalog writes + root-pkg wiring  ✅ committed (`917a8a9`) + reviewed

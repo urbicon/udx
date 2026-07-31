@@ -78,7 +78,7 @@ export function canonicalScripts(ctx: ProjectContext, tier?: DepTier): Record<st
   return { format, lint, ...REPO_GLOBAL_SCRIPTS };
 }
 
-/** root-tier devDeps: repo-global tools + TS toolchain + @urbicon presets (everything except svelte). */
+/** root-tier devDeps: repo-global tools + TS toolchain + @urbicon-ui presets (everything except svelte). */
 const ROOT_TIER_DEPS: readonly DepName[] = [...TOOL_DEPS, ...URBICON_DEPS];
 
 export function canonicalDevDeps(
@@ -223,7 +223,7 @@ export function computePkgPlan(
       plan.devDepsToRemove.push({ name: renamed, from: devDeps[renamed], to: name });
     }
 
-    // Literal mode (no catalog) or @urbicon/* (unified with the CLI version, never bumped via
+    // Literal mode (no catalog) or @urbicon-ui/* (unified with the CLI version, never bumped via
     // catalog/Renovate, D9-D) → previous behavior: add the literal version or raise it safely.
     if (catalog === null || URBICON_SET.has(name)) {
       if (current === undefined) plan.devDepsToAdd.push({ name, to: pin });

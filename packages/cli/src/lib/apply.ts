@@ -1,6 +1,6 @@
 import { FILE_TEMPLATES, type FileScope, type RenderCtx } from '../templates/index.ts';
 import { formatDiff } from './diff.ts';
-import { abs, exists, readText, writeText } from './fs.ts';
+import { abs, exists, readText, remove, writeText } from './fs.ts';
 import type { FileAction } from './log.ts';
 import { hashContent, type Manifest } from './manifest.ts';
 
@@ -143,46 +143,47 @@ export function applyFiles(
   return results;
 }
 
-export const URBICON_REGISTRY = 'https://codeberg.org/api/packages/urbicon/npm/';
-/** Scope line for bunfig.toml. The @urbicon registry on Codeberg is public — no token to install. */
-export const BUNFIG_SCOPE_LINE = `"@urbicon" = "${URBICON_REGISTRY}"`;
-const BUNFIG_BLOCK = `# @urbicon packages from Codeberg's public registry — no token needed to install.
-[install.scopes]
-${BUNFIG_SCOPE_LINE}
-`;
+/**
+ * Registry the packages lived on before the 2026-07 move — back when they were scoped
+ * `@urbicon` rather than `@urbicon-ui`. Nothing is published there anymore, so a leftover
+ * mapping is not merely redundant: it keeps the old scope resolving to frozen copies.
+ * Earlier udx versions wrote exactly this block, hence the cleanup below.
+ */
+export const LEGACY_REGISTRY = 'https://codeberg.org/api/packages/urbicon/npm/';
 
-/** Existing [install.scopes] header (TOML allows no second one) — top-level regex. */
-const INSTALL_SCOPES_HEADER = /^\s*\[install\.scopes\]/m;
+/** The full block written by udx ≤0.2.9 (comment + table header + scope line). */
+const LEGACY_BUNFIG_BLOCK =
+  /(?:^[ \t]*#[^\n]*\r?\n)?^[ \t]*\[install\.scopes\][ \t]*\r?\n[ \t]*"@urbicon"[ \t]*=[ \t]*"https:\/\/codeberg\.org\/api\/packages\/urbicon\/npm\/"[ \t]*\r?\n?/m;
+
+/** Fallback: the bare scope line inside an [install.scopes] block shared with other scopes. */
+const LEGACY_SCOPE_LINE =
+  /^[ \t]*"@urbicon"[ \t]*=[ \t]*"https:\/\/codeberg\.org\/api\/packages\/urbicon\/npm\/"[ \t]*\r?\n?/m;
 
 /**
- * Ensures the @urbicon registry in bunfig.toml (Bun-native counterpart to .npmrc).
- * Additive idempotency: detects an existing configuration by the registry URL. It does NOT
- * automatically extend an existing [install.scopes] block (TOML allows no second table header)
- * — instead it reports the line that needs to be added.
+ * Removes a stale @urbicon → Codeberg mapping from bunfig.toml. Returns `null` when there
+ * is nothing to do (the common case), so `init`/`sync` stay silent for projects that never
+ * had one. If the whole block was udx-written and nothing else remains, the now-pointless
+ * file goes away entirely; a mapping mixed with other scopes loses only its own line.
  */
-export function ensureBunfig(cwd: string, dryRun: boolean): FileResult {
+export function pruneLegacyRegistry(cwd: string, dryRun: boolean): FileResult | null {
   const dest = 'bunfig.toml';
   const target = abs(cwd, dest);
-
-  if (!exists(target)) {
-    if (dryRun) return { dest, action: 'would-create' };
-    writeText(target, BUNFIG_BLOCK);
-    return { dest, action: 'created' };
-  }
+  if (!exists(target)) return null;
 
   const content = readText(target);
-  if (content.includes(URBICON_REGISTRY)) return { dest, action: 'unchanged' };
+  if (!content.includes(LEGACY_REGISTRY)) return null;
 
-  if (INSTALL_SCOPES_HEADER.test(content)) {
-    return {
-      dest,
-      action: 'skipped',
-      note: `add the @urbicon scope manually: ${BUNFIG_SCOPE_LINE}`
-    };
+  const note = 'stale @urbicon registry removed — packages are on npm now';
+  if (dryRun) return { dest, action: 'would-update', note };
+
+  const pruned = LEGACY_BUNFIG_BLOCK.test(content)
+    ? content.replace(LEGACY_BUNFIG_BLOCK, '')
+    : content.replace(LEGACY_SCOPE_LINE, '');
+
+  if (pruned.trim() === '') {
+    remove(target);
+    return { dest, action: 'updated', note: 'removed — no longer needed' };
   }
-
-  if (dryRun) return { dest, action: 'would-update', note: '[install.scopes] missing' };
-  const sep = content.endsWith('\n') ? '\n' : '\n\n';
-  writeText(target, `${content}${sep}${BUNFIG_BLOCK}`);
-  return { dest, action: 'updated', note: '[install.scopes] added' };
+  writeText(target, pruned);
+  return { dest, action: 'updated', note };
 }

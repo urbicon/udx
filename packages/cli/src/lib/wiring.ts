@@ -4,13 +4,13 @@ import type { DepName } from './versions.ts';
 import { resolveWorkspaces } from './workspace.ts';
 
 /**
- * Wiring awareness: the @urbicon config packages are only useful if the consuming
+ * Wiring awareness: the @urbicon-ui config packages are only useful if the consuming
  * config actually references them (biome.json `extends`, commitlint `createConfig`, tsconfig `extends`).
  * If a self-managed config exists that does NOT reference the package, its devDep would be dead
  * weight — udx then doesn't add it and reports the gap (instead of silently dragging it along).
  */
 export type WiringStatus =
-  /** The consuming config references the @urbicon package. */
+  /** The consuming config references the @urbicon-ui package. */
   | 'wired'
   /** The config exists but doesn't reference it (self-managed). */
   | 'self-managed'
@@ -35,14 +35,14 @@ interface ConfigDef extends Omit<WiringState, 'status'> {
 const CONFIGS: ConfigDef[] = [
   {
     id: 'biome',
-    dep: '@urbicon/biome-config',
+    dep: '@urbicon-ui/biome-config',
     label: 'Biome preset',
     consuming: 'biome.json',
     candidates: (ctx) => [abs(ctx.cwd, 'biome.json')]
   },
   {
     id: 'commitlint',
-    dep: '@urbicon/commitlint-config',
+    dep: '@urbicon-ui/commitlint-config',
     label: 'Commitlint preset',
     consuming: 'commitlint.config.mjs',
     candidates: (ctx) =>
@@ -50,7 +50,7 @@ const CONFIGS: ConfigDef[] = [
   },
   {
     id: 'tsconfig',
-    dep: '@urbicon/tsconfig',
+    dep: '@urbicon-ui/tsconfig',
     label: 'tsconfig preset',
     consuming: 'tsconfig.json',
     // package-scoped: root + every workspace package (in a monorepo udx writes a tsconfig per package).
@@ -80,7 +80,7 @@ function scan(paths: string[], dep: string): WiringStatus {
   return present ? 'self-managed' : 'absent';
 }
 
-/** Determines the wiring status per @urbicon config package. Read-only. */
+/** Determines the wiring status per @urbicon-ui config package. Read-only. */
 export function detectWiring(ctx: ProjectContext): WiringState[] {
   return CONFIGS.map(({ candidates, ...rest }) => ({
     ...rest,
@@ -89,7 +89,7 @@ export function detectWiring(ctx: ProjectContext): WiringState[] {
 }
 
 /**
- * @urbicon deps that should NOT be added because the consuming config doesn't use them
+ * @urbicon-ui deps that should NOT be added because the consuming config doesn't use them
  * (self-managed) — feeds the `skip.devDeps` set of `computePkgPlan`. `absent` does NOT count:
  * there udx creates the config wired up, so the dep belongs.
  */

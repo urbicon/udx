@@ -1,5 +1,5 @@
 {
-  "name": "@urbicon/udx-workspace",
+  "name": "@urbicon-ui/udx-workspace",
   "description": "Shared development harness for Bun/Svelte projects (configs, CLI)",
   "private": true,
   "version": "0.2.9",
@@ -30,7 +30,7 @@
     }
   },
   "scripts": {
-    "build": "bun --filter='@urbicon/udx' run build",
+    "build": "bun --filter='@urbicon-ui/udx' run build",
     "format": "biome format --write .",
     "lint": "biome check .",
     "fix": "biome check --write .",
@@ -53,9 +53,9 @@
     "@commitlint/config-conventional": "catalog:",
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
-    "@urbicon/biome-config": "workspace:*",
-    "@urbicon/commitlint-config": "workspace:*",
-    "@urbicon/tsconfig": "workspace:*",
+    "@urbicon-ui/biome-config": "workspace:*",
+    "@urbicon-ui/commitlint-config": "workspace:*",
+    "@urbicon-ui/tsconfig": "workspace:*",
     "git-cliff": "catalog:",
     "lefthook": "catalog:",
     "typescript": "catalog:"

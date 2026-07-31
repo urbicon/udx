@@ -1,12 +1,21 @@
 {
-  "name": "@urbicon/udx",
+  "name": "@urbicon-ui/udx",
   "version": "0.2.9",
   "description": "CLI for setting up and syncing the urbicon development harness",
   "type": "module",
   "author": "Felix Urban",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/urbicon/udx.git",
+    "directory": "packages/cli"
+  },
+  "homepage": "https://github.com/urbicon/udx/tree/main/packages/cli",
+  "bugs": {
+    "url": "https://github.com/urbicon/udx/issues"
+  },
   "publishConfig": {
-    "registry": "https://codeberg.org/api/packages/urbicon/npm/"
+    "access": "public"
   },
   "bin": {
     "udx": "dist/bin/udx.js"
@@ -32,7 +41,7 @@
   "devDependencies": {
     "@types/bun": "catalog:",
     "@types/node": "catalog:",
-    "@urbicon/tsconfig": "workspace:*",
+    "@urbicon-ui/tsconfig": "workspace:*",
     "typescript": "catalog:"
   }
 }

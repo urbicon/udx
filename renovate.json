@@ -35,9 +35,9 @@
     {
       "description": "udx's own config packages are unified with the CLI version (scripts/bump.sh) — not to be bumped by Renovate.",
       "matchPackageNames": [
-        "@urbicon/biome-config",
-        "@urbicon/commitlint-config",
-        "@urbicon/tsconfig"
+        "@urbicon-ui/biome-config",
+        "@urbicon-ui/commitlint-config",
+        "@urbicon-ui/tsconfig"
       ],
       "enabled": false
     }

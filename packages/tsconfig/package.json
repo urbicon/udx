@@ -1,11 +1,20 @@
 {
-  "name": "@urbicon/tsconfig",
+  "name": "@urbicon-ui/tsconfig",
   "version": "0.2.9",
   "description": "Shared TypeScript base configuration for Bun/Svelte projects",
   "author": "Felix Urban",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/urbicon/udx.git",
+    "directory": "packages/tsconfig"
+  },
+  "homepage": "https://github.com/urbicon/udx/tree/main/packages/tsconfig",
+  "bugs": {
+    "url": "https://github.com/urbicon/udx/issues"
+  },
   "publishConfig": {
-    "registry": "https://codeberg.org/api/packages/urbicon/npm/"
+    "access": "public"
   },
   "files": [
     "base.json",

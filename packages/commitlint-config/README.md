@@ -1,4 +1,4 @@
-# @urbicon/commitlint-config
+# @urbicon-ui/commitlint-config
 
 Shared [commitlint](https://commitlint.js.org) configuration based on
 Conventional Commits, with a factory for project-specific scopes.
@@ -6,7 +6,7 @@ Conventional Commits, with a factory for project-specific scopes.
 ## Installation
 
 ```bash
-bun add -D @commitlint/cli @urbicon/commitlint-config
+bun add -D @commitlint/cli @urbicon-ui/commitlint-config
 ```
 
 (`@commitlint/config-conventional` comes along as a dependency.)
@@ -15,7 +15,7 @@ bun add -D @commitlint/cli @urbicon/commitlint-config
 
 ```js
 // commitlint.config.mjs
-import { createConfig } from '@urbicon/commitlint-config';
+import { createConfig } from '@urbicon-ui/commitlint-config';
 
 export default createConfig({
   scopes: ['ui', 'api', 'core', 'deps']
@@ -25,7 +25,7 @@ export default createConfig({
 Without scopes (just the Conventional Commits base):
 
 ```js
-import config from '@urbicon/commitlint-config';
+import config from '@urbicon-ui/commitlint-config';
 export default config;
 ```
 

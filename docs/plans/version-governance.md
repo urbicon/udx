@@ -76,7 +76,7 @@ sees the state instead of having to ask for it, and triggers risky actions only 
 ### WP7 — D2: `stack:update` script + Renovate  ✅ committed + reviewed
 - [x] `scripts/stack-update.ts` (+ root `stack:update`): registry `fetch` per catalog entry, gate patch(default)/`--minor`/`--major` (numerically capped, never a downgrade), operator-preserving writes, `--dry-run`. Writes nothing at all on partial errors (no inconsistent state). `bun outdated -r` stays the human view.
 - [x] **Caveat verified** (WP3): `bun outdated -r` does not show named catalogs (`catalogs.svelte`) — empirically confirmed, justifies the script.
-- [x] `renovate.json`: catalog support verified → Renovate does **not** know Bun catalogs natively (only pnpm/yarn), hence a regex `customManager` (RE2-compatible; checked with `renovate-config-validator`, extraction verified against package.json). `rangeStrategy: bump`, deps scope, `@urbicon/*` excluded. CLAUDE.md: version source (catalog) + bump workflow documented.
+- [x] `renovate.json`: catalog support verified → Renovate does **not** know Bun catalogs natively (only pnpm/yarn), hence a regex `customManager` (RE2-compatible; checked with `renovate-config-validator`, extraction verified against package.json). `rangeStrategy: bump`, deps scope, `@urbicon-ui/*` excluded. CLAUDE.md: version source (catalog) + bump workflow documented.
 - [x] commit + review (2 agents) → findings fixed: Renovate customManager (native gap), no partial write on errors, more robust `splitRange`.
 
 ### WP8 — D8: `udx sync --install` (small)  ✅ committed + reviewed
@@ -88,11 +88,11 @@ sees the state instead of having to ask for it, and triggers risky actions only 
 ### Biome × Svelte  ✅ committed
 - [x] The generated `biome.json` **always** excludes `.svelte` (not only when Svelte is detected) — otherwise the non-svelte monorepo root lets Biome run inside `.svelte` sub-packages (false positives/fixes). Svelte stays with Prettier (format) + svelte-check (types/a11y); Biome only TS/JS/JSON. The optional ESLint Svelte building block is deferred (an opt-in extra).
 
-### WP9 — Wiring awareness for @urbicon config packages  ✅ committed + reviewed
-> Problem (real-world): create-only configs that already exist (`tsconfig.root.json` self-contained, `commitlint.config.mjs` uses `config-conventional` directly) are not wired — yet `@urbicon/tsconfig`/`commitlint-config` are still added as a devDep ⇒ dead weight. Dep and usage decoupled.
-- [x] `lib/wiring.ts`: detects per @urbicon config package (`biome-config`/`commitlint-config`/`tsconfig`) whether the consuming config references it → `wired` / `self-managed` / `absent` (tsconfig scans the root + workspace packages; robust string match because of jsonc/.mjs; aggregate: one wired candidate is enough).
-- [x] **Dep gating:** `self-managed` ⇒ the @urbicon dep is **not** added (only the preset dep, not the tool dep like `@biomejs/biome`). Self-healing, no manifest state — follows the real config; after wiring, the next `sync` adds the dep.
-- [x] **Actively report** in `status` (the "Wiring" section, `~` glyph), `doctor` (skip, no fail), `sync` footer: "own <config> — @urbicon/<pkg> not wired". Choice: adopt with `udx sync --only <id> --force` · keep your own (do nothing).
+### WP9 — Wiring awareness for @urbicon-ui config packages  ✅ committed + reviewed
+> Problem (real-world): create-only configs that already exist (`tsconfig.root.json` self-contained, `commitlint.config.mjs` uses `config-conventional` directly) are not wired — yet `@urbicon-ui/tsconfig`/`commitlint-config` are still added as a devDep ⇒ dead weight. Dep and usage decoupled.
+- [x] `lib/wiring.ts`: detects per @urbicon-ui config package (`biome-config`/`commitlint-config`/`tsconfig`) whether the consuming config references it → `wired` / `self-managed` / `absent` (tsconfig scans the root + workspace packages; robust string match because of jsonc/.mjs; aggregate: one wired candidate is enough).
+- [x] **Dep gating:** `self-managed` ⇒ the @urbicon-ui dep is **not** added (only the preset dep, not the tool dep like `@biomejs/biome`). Self-healing, no manifest state — follows the real config; after wiring, the next `sync` adds the dep.
+- [x] **Actively report** in `status` (the "Wiring" section, `~` glyph), `doctor` (skip, no fail), `sync` footer: "own <config> — @urbicon-ui/<pkg> not wired". Choice: adopt with `udx sync --only <id> --force` · keep your own (do nothing).
 - [x] **Decision A:** no capability/`add`/`remove` for this — the dep follows the *actual wiring* (config content), orthogonal to the adopt/decline manifest.
 - [x] **Decision B (semantics extension):** `applyFiles` overwrites a create-only file **only** with `--force` **and** an explicit `--only <id>`. A bare `udx sync --force` leaves create-only files untouched.
 - [x] Tests + commit + review (2 agents) → finding fixed: `udx add <cap> --force` is additive (no create-only overwrite; deliberate replacement only via `sync --only --force`).
