@@ -4,6 +4,11 @@ All notable changes to this project will be documented in this file.
 This changelog is automatically generated from [Conventional Commits](https://www.conventionalcommits.org).
 
 
+## [0.3.1] - 2026-07-31
+
+### Bug Fixes
+- **cli**: Match both TOML spellings when pruning the legacy registry
+
 ## [0.3.0] - 2026-07-31
 
 ### Breaking Changes
