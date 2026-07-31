@@ -1905,6 +1905,41 @@ describe('pruneLegacyRegistry', () => {
     expect(content).not.toContain('[install.scopes]');
   });
 
+  // Bun accepts an inline table for a scope; hand-written bunfig.toml files use it, so the
+  // string form alone would silently leave the mapping in place.
+  test('removes the inline-table spelling and keeps other [install] settings', () => {
+    const dir = project({ name: 'x' });
+    writeFileSync(
+      join(dir, 'bunfig.toml'),
+      `[install]\nlinker = "hoisted"\n\n[install.scopes]\n"@urbicon" = { url = "${LEGACY_REGISTRY}" }\n`
+    );
+    expect(pruneLegacyRegistry(dir, false)?.action).toBe('updated');
+    const content = readFileSync(join(dir, 'bunfig.toml'), 'utf8');
+    expect(content).toContain('linker = "hoisted"');
+    expect(content).not.toContain(LEGACY_REGISTRY);
+    expect(content).not.toContain('[install.scopes]');
+  });
+
+  test('removes an inline table carrying a token field', () => {
+    const dir = project({ name: 'x' });
+    writeFileSync(
+      join(dir, 'bunfig.toml'),
+      `[install.scopes]\n"@urbicon" = { token = "$TOK", url = "${LEGACY_REGISTRY}" }\n`
+    );
+    expect(pruneLegacyRegistry(dir, false)?.action).toBe('updated');
+    expect(existsSync(join(dir, 'bunfig.toml'))).toBe(false);
+  });
+
+  test('an unmatched spelling is reported, never claimed as written', () => {
+    const dir = project({ name: 'x' });
+    // URL present, but split across lines — no pattern can safely rewrite this.
+    const odd = `[install.scopes]\n"@urbicon" = {\n  url = "${LEGACY_REGISTRY}"\n}\n`;
+    writeFileSync(join(dir, 'bunfig.toml'), odd);
+    const res = pruneLegacyRegistry(dir, false);
+    expect(res?.action).toBe('skipped');
+    expect(readFileSync(join(dir, 'bunfig.toml'), 'utf8')).toBe(odd);
+  });
+
   test('drops only its own line from a shared install.scopes block', () => {
     const dir = project({ name: 'x' });
     writeFileSync(

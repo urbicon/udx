@@ -151,19 +151,32 @@ export function applyFiles(
  */
 export const LEGACY_REGISTRY = 'https://codeberg.org/api/packages/urbicon/npm/';
 
-/** The full block written by udx ≤0.2.9 (comment + table header + scope line). */
-const LEGACY_BUNFIG_BLOCK =
-  /(?:^[ \t]*#[^\n]*\r?\n)?^[ \t]*\[install\.scopes\][ \t]*\r?\n[ \t]*"@urbicon"[ \t]*=[ \t]*"https:\/\/codeberg\.org\/api\/packages\/urbicon\/npm\/"[ \t]*\r?\n?/m;
+/**
+ * The scope line in either TOML spelling Bun accepts — `"@urbicon" = "<url>"` and the inline
+ * table `"@urbicon" = { url = "<url>", … }`. Matched by "key + a line carrying the Codeberg
+ * URL" rather than by an exact value, so a token field or single quotes cannot slip past.
+ */
+const LEGACY_SCOPE_LINE_SRC =
+  '[ \\t]*["\']?@urbicon["\']?[ \\t]*=[ \\t]*[^\\n]*codeberg\\.org/api/packages/urbicon/npm[^\\n]*\\r?\\n?';
 
-/** Fallback: the bare scope line inside an [install.scopes] block shared with other scopes. */
-const LEGACY_SCOPE_LINE =
-  /^[ \t]*"@urbicon"[ \t]*=[ \t]*"https:\/\/codeberg\.org\/api\/packages\/urbicon\/npm\/"[ \t]*\r?\n?/m;
+const LEGACY_SCOPE_LINE = new RegExp(`^${LEGACY_SCOPE_LINE_SRC}`, 'm');
+
+/** The full block written by udx ≤0.2.9 (its own one-line comment + table header + scope line). */
+const LEGACY_BUNFIG_BLOCK = new RegExp(
+  `(?:^[ \\t]*#[^\\n]*\\r?\\n)?^[ \\t]*\\[install\\.scopes\\][ \\t]*\\r?\\n${LEGACY_SCOPE_LINE_SRC}`,
+  'm'
+);
+
+/** An [install.scopes] header left behind with no entries under it. */
+const EMPTY_INSTALL_SCOPES = /^[ \t]*\[install\.scopes\][ \t]*\r?\n(?=[ \t]*(?:\r?\n)*(?:\[|$))/m;
 
 /**
  * Removes a stale @urbicon → Codeberg mapping from bunfig.toml. Returns `null` when there
  * is nothing to do (the common case), so `init`/`sync` stay silent for projects that never
  * had one. If the whole block was udx-written and nothing else remains, the now-pointless
  * file goes away entirely; a mapping mixed with other scopes loses only its own line.
+ * Should no pattern bite (a hand-rolled spelling), the file is left untouched and reported
+ * as a manual step — never a silent "updated" that changed nothing.
  */
 export function pruneLegacyRegistry(cwd: string, dryRun: boolean): FileResult | null {
   const dest = 'bunfig.toml';
@@ -174,11 +187,21 @@ export function pruneLegacyRegistry(cwd: string, dryRun: boolean): FileResult | 
   if (!content.includes(LEGACY_REGISTRY)) return null;
 
   const note = 'stale @urbicon registry removed — packages are on npm now';
-  if (dryRun) return { dest, action: 'would-update', note };
+  const pruned = (
+    LEGACY_BUNFIG_BLOCK.test(content)
+      ? content.replace(LEGACY_BUNFIG_BLOCK, '')
+      : content.replace(LEGACY_SCOPE_LINE, '')
+  ).replace(EMPTY_INSTALL_SCOPES, '');
 
-  const pruned = LEGACY_BUNFIG_BLOCK.test(content)
-    ? content.replace(LEGACY_BUNFIG_BLOCK, '')
-    : content.replace(LEGACY_SCOPE_LINE, '');
+  // Nothing matched ⇒ report honestly instead of claiming a write that would be a no-op.
+  if (pruned === content) {
+    return {
+      dest,
+      action: 'skipped',
+      note: 'remove the stale @urbicon registry mapping by hand — packages are on npm now'
+    };
+  }
+  if (dryRun) return { dest, action: 'would-update', note };
 
   if (pruned.trim() === '') {
     remove(target);
