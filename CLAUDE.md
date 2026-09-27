@@ -43,6 +43,28 @@ Renovate config, …); the building block is then automatically declined and the
 persisted in `.udx.json` `declined`. `udx adopt <id>` / `udx skip <id>` control this manually.
 Declined building blocks are not a target in `init`/`sync`/`doctor` (not an error).
 
+An **opt-in** capability (`optIn: true`, today only `knowledge`) is inactive until its id is in
+`.udx.json` `adopted` (`udx add <id>`): `init`/`sync` never write it, and `status`/`doctor` show
+it as *available*. `resolveCapabilities` computes that state; it is never persisted as a decline.
+
+### The knowledge layer (`knowledge` capability)
+
+- A Claude skill enters udx only as part of a capability whose other parts the harness can
+  enforce: a gate script, templates, sync. A free-standing skill with nothing to check stays out
+  of this repo and belongs in the author's own `~/.claude/`.
+
+- The skill ships as text assets under `packages/cli/src/assets/skills/knowledge-layer/`. The
+  templates turn every file in that folder into a `managed` building block under
+  `.claude/skills/knowledge-layer/`. A test pins the asset list, so a new file needs no
+  hand-written entry.
+- The skill is the same in every project, so it must not name a project-specific path: use a
+  placeholder like `<working-docs>/…`. The oracle is the test that installs it into a fresh
+  private and a fresh public fixture and expects `udx docs check` to report nothing.
+- `udx docs check` (`commands/docs.ts`, `lib/docs-check/`) is the ported, generalized form of the
+  ui repo's `docs-refs-check`. It checks existence only and asks real systems (package.json, the
+  file tree, git's index, headings). Its configuration lives in the project's `package.json`
+  under `udx.docs`.
+
 ### CLI structure (`packages/cli/src`)
 
 - `bin/udx.ts` — arg parsing + dispatch (zero runtime deps)

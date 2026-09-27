@@ -21,6 +21,19 @@ hand — including a mechanism to **feed improvements back**.
    `renovate.json`) → written/updated by the `udx` CLI. `udx sync`
    pulls in changes.
 
+## Opt-in: the knowledge layer
+
+`udx add knowledge` installs a Claude Code skill that decides where a project's knowledge
+lives and how it retires. It covers:
+
+- instructions (`AGENTS.md`/`CLAUDE.md`), docs and `DECISIONS.md`;
+- plans and working documents, which are harvested and deleted rather than archived;
+- one tracker per project, and agent memory.
+
+It also wires `bun run docs:check` (`udx docs check`), the gate for everything in that layer
+that can be checked mechanically. The capability is opt-in: `init` and `sync` never add it on
+their own. Details: [packages/cli/README.md](packages/cli/README.md#knowledge-layer-udx-add-knowledge).
+
 ## Quick start in a project
 
 The `@urbicon-ui/*` packages are published to the **public npm registry** — nothing to
