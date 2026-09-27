@@ -24,7 +24,15 @@ export interface StatusFlags {
 }
 
 /** Classification of a managed thing — determines glyph, color, and the recommended action. */
-type State = 'sync' | 'behind' | 'missing' | 'customized' | 'pinned' | 'declined' | 'unwired';
+type State =
+  | 'sync'
+  | 'behind'
+  | 'missing'
+  | 'customized'
+  | 'pinned'
+  | 'declined'
+  | 'available'
+  | 'unwired';
 
 interface Row {
   state: State;
@@ -46,6 +54,7 @@ const GLYPH: Record<State, string> = {
   customized: c.yellow('✎'),
   pinned: c.gray('⊙'),
   declined: c.gray('⊘'),
+  available: c.gray('○'),
   unwired: c.gray('~')
 };
 
@@ -182,16 +191,23 @@ export function buildReport(flags: StatusFlags): {
   const wiringSkip = wiringSkipDeps(wiring);
   const skipDeps = new Set([...declined.devDeps, ...wiringSkip]);
 
-  const blocks: Row[] = capStates.map((s) =>
-    s.declined
-      ? {
-          state: 'declined' as const,
-          label: s.cap.label,
-          detail: `declined (${s.reason})`,
-          cmd: `udx add ${s.cap.id}`
-        }
-      : { state: 'sync' as const, label: s.cap.label, detail: 'active' }
-  );
+  const blocks: Row[] = capStates.map((s): Row => {
+    if (s.available)
+      return {
+        state: 'available',
+        label: s.cap.label,
+        detail: 'available (opt-in)',
+        cmd: `udx add ${s.cap.id}`
+      };
+    if (s.declined)
+      return {
+        state: 'declined',
+        label: s.cap.label,
+        detail: `declined (${s.reason})`,
+        cmd: `udx add ${s.cap.id}`
+      };
+    return { state: 'sync', label: s.cap.label, detail: 'active' };
+  });
 
   // package.json: only the actionable items as rows, the rest as an "in sync" counter. Monorepo: the
   // root carries the root tier (a svelte root = everything); each Svelte package its svelte tier (D9-C).
@@ -311,7 +327,7 @@ export function runStatus(flags: StatusFlags): number {
   log.plain();
   log.info(
     c.gray(
-      'Legend  ✓ in sync · ↑ sync bumps · + missing · ✎ locally modified (force/-i) · ⊙ pinned · ⊘ block off · ~ own config'
+      'Legend  ✓ in sync · ↑ sync bumps · + missing · ✎ locally modified (force/-i) · ⊙ pinned · ⊘ block off · ○ opt-in, not added · ~ own config'
     )
   );
   const all = sections.flatMap((s) => s.rows);

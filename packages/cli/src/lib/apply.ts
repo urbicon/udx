@@ -37,6 +37,7 @@ export function applyFiles(
   ctx: RenderCtx,
   opts: ApplyOptions,
   manifest: Manifest,
+  /** Inactive building block's FILE_TEMPLATE id → why it is skipped (the result's note). */
   declined: ReadonlyMap<string, string> = new Map(),
   only: ReadonlySet<string> | null = null
 ): FileResult[] {
@@ -49,15 +50,10 @@ export function applyFiles(
     // --only: restrict to the selected building blocks (the rest stays untouched).
     if (only && !only.has(t.id)) continue;
 
-    // Declined capability (e.g. lefthook when husky is present) → do not manage.
-    const declinedReason = declined.get(t.id);
-    if (declinedReason) {
-      results.push({
-        dest: t.dest,
-        id: t.id,
-        action: 'skipped',
-        note: `declined (${declinedReason})`
-      });
+    // Inactive capability (e.g. lefthook when husky is present) → do not manage.
+    const skipNote = declined.get(t.id);
+    if (skipNote) {
+      results.push({ dest: t.dest, id: t.id, action: 'skipped', note: skipNote });
       continue;
     }
 

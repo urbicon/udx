@@ -101,20 +101,25 @@ function persistDeclines(states: CapabilityState[], manifest: Manifest): void {
   }
 }
 
-/** Shows declined building blocks unobtrusively (one line per block + a hint). */
+/** Shows inactive building blocks unobtrusively (one line per block + a hint). */
 function reportCapabilities(states: CapabilityState[]): void {
-  const declined = states.filter((s) => s.declined);
-  if (declined.length === 0) return;
+  const inactive = states.filter((s) => s.declined || s.available);
+  if (inactive.length === 0) return;
 
   log.plain();
   log.step('Building blocks');
-  for (const s of declined) {
-    const detail = s.fresh
-      ? `${s.reason} detected — skipped, remembered`
-      : `declined (${s.reason})`;
+  for (const s of inactive) {
+    const detail = s.available
+      ? `available (opt-in) — \`udx add ${s.cap.id}\``
+      : s.fresh
+        ? `${s.reason} detected — skipped, remembered`
+        : `declined (${s.reason})`;
     log.skip(`${s.cap.label}: ${detail}`);
   }
-  log.info(c.gray('Enable with `udx add <id>` (e.g. git-hooks), decline with `udx remove <id>`.'));
+  const example = inactive[0]?.cap.id;
+  log.info(
+    c.gray(`Enable with \`udx add <id>\` (e.g. ${example}), decline with \`udx remove <id>\`.`)
+  );
 }
 
 /** Reports self-managed configs neutrally and offers to adopt the udx template (D9). */
@@ -437,6 +442,8 @@ export function runHarness(
     if (pruned) results.push(pruned);
   }
   for (const r of results) {
+    // Inactive opt-ins appear once under Building blocks; an explicit `--only` lists their files.
+    if (!selection && r.id && declined.unlisted.has(r.id)) continue;
     reportAction(r.action, r.dest, r.note);
     if (r.diff) log.block(r.diff);
   }

@@ -1,14 +1,24 @@
 import bumpSh from '../assets/bump.sh' with { type: 'text' };
 import claudeTpl from '../assets/CLAUDE.md.tpl' with { type: 'text' };
 import cliffToml from '../assets/cliff.toml' with { type: 'text' };
+import knowledgeDecisions from '../assets/knowledge/DECISIONS.md' with { type: 'text' };
+import knowledgeDocsReadme from '../assets/knowledge/docs-README.md' with { type: 'text' };
+import knowledgeInternalReadme from '../assets/knowledge/internal-README.md' with { type: 'text' };
 // .tpl instead of .json: imported as text (not as a JSON module) and left unformatted by Biome,
 // so the content stays byte-identical to the dogfooded root renovate.json (coupled via a test).
 import renovateJson from '../assets/renovate.json.tpl' with { type: 'text' };
+import skillAudit from '../assets/skills/knowledge-layer/audit.md' with { type: 'text' };
+import skillEvidence from '../assets/skills/knowledge-layer/evidence.md' with { type: 'text' };
+import skillPlacement from '../assets/skills/knowledge-layer/placement.md' with { type: 'text' };
+import skillMain from '../assets/skills/knowledge-layer/SKILL.md' with { type: 'text' };
+import skillSetup from '../assets/skills/knowledge-layer/setup.md' with { type: 'text' };
+import type { PackageJson, ProjectContext } from '../lib/detect.ts';
+import { DEFAULT_WORKING_DOCS, normalizeRepoPath } from '../lib/docs-check/config.ts';
+import { gitIgnoresContents } from '../lib/git.ts';
 import { VERSIONS } from '../lib/versions.ts';
 
-export interface RenderCtx {
-  svelte: boolean;
-  projectName: string;
+/** The project a template is rendered for — `applies` may ask its tree (`cwd`) and `pkg`. */
+export interface RenderCtx extends ProjectContext {
   /**
    * Monorepo: true if ANY workspace package is svelte — even with a non-svelte root. Drives the
    * root-scoped Svelte building blocks (lefthook prettier line, `.prettierrc`/`.prettierignore`) that must
@@ -149,6 +159,67 @@ build/
 `;
 }
 
+/**
+ * The knowledge-layer skill, file name → content. Static imports, because `bun build` only
+ * inlines what it can see; a test keeps this map equal to the asset directory.
+ */
+const KNOWLEDGE_SKILL: Record<string, string> = {
+  'SKILL.md': skillMain,
+  'audit.md': skillAudit,
+  'evidence.md': skillEvidence,
+  'placement.md': skillPlacement,
+  'setup.md': skillSetup
+};
+
+/** `udx.docs.workingDocs` is unset or names the default folder, however it is spelled. */
+function workingDocsIsDefault(pkg: PackageJson): boolean {
+  const docs = (pkg.udx as { docs?: { workingDocs?: unknown } } | undefined)?.docs;
+  const dir = docs?.workingDocs;
+  if (dir === undefined) return true;
+  return typeof dir === 'string' && normalizeRepoPath(dir) === DEFAULT_WORKING_DOCS;
+}
+
+/**
+ * The `knowledge` capability's files. Each skill file is its own managed template (its own
+ * manifest hash), so a sync updates exactly the files whose asset changed and protects each
+ * locally edited one on its own. The docs scaffolds are create-only: once written, they are the
+ * project's documents.
+ */
+const KNOWLEDGE_TEMPLATES: FileTemplate[] = [
+  ...Object.entries(KNOWLEDGE_SKILL).map(
+    ([file, content]): FileTemplate => ({
+      id: `knowledge-layer/${file}`,
+      dest: `.claude/skills/knowledge-layer/${file}`,
+      policy: 'managed',
+      render: () => content
+    })
+  ),
+  {
+    id: 'decisions',
+    dest: 'docs/DECISIONS.md',
+    policy: 'create-only',
+    render: () => knowledgeDecisions
+  },
+  {
+    id: 'docs-readme',
+    dest: 'docs/README.md',
+    policy: 'create-only',
+    render: () => knowledgeDocsReadme
+  },
+  {
+    id: 'internal-readme',
+    dest: `${DEFAULT_WORKING_DOCS}/README.md`,
+    policy: 'create-only',
+    // A git-ignored folder is a public repo's store, a repository of its own that a clone or
+    // worktree lacks: there the README is the store's, and writing one would plant a file in it.
+    applies: (ctx) =>
+      workingDocsIsDefault(ctx.pkg) && !gitIgnoresContents(ctx.cwd, DEFAULT_WORKING_DOCS),
+    render: () => knowledgeInternalReadme
+  }
+];
+
+export const KNOWLEDGE_TEMPLATE_IDS: string[] = KNOWLEDGE_TEMPLATES.map((t) => t.id);
+
 export const FILE_TEMPLATES: FileTemplate[] = [
   { id: 'cliff', dest: 'cliff.toml', policy: 'managed', render: () => cliffToml },
   { id: 'lefthook', dest: 'lefthook.yml', policy: 'managed', render: renderLefthook },
@@ -196,7 +267,8 @@ export const FILE_TEMPLATES: FileTemplate[] = [
     dest: 'CLAUDE.md',
     policy: 'create-only',
     render: (ctx) => claudeTpl.replaceAll('{{projectName}}', ctx.projectName)
-  }
+  },
+  ...KNOWLEDGE_TEMPLATES
 ];
 
 // Invariant (fail-fast instead of silent corruption): package-scoped building blocks run per package

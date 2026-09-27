@@ -1,18 +1,28 @@
+import { KNOWLEDGE_TEMPLATE_IDS } from '../templates/index.ts';
 import type { ProjectContext } from './detect.ts';
 import { abs, exists } from './fs.ts';
 import type { Manifest } from './manifest.ts';
+import { canonicalScripts } from './pkg.ts';
 import type { DepName } from './versions.ts';
 
 /**
  * A declinable stack capability that bundles file(s), scripts, and devDeps.
  * `supersededBy` detects generically (via deps/files, never via project names) whether the
  * project already solves this capability differently — in which case the building block is
- * automatically declined and the decision is persisted in the manifest.
+ * automatically declined and, unless it is opt-in, the decision is persisted in the manifest.
  */
 export interface Capability {
   id: string;
   label: string;
-  /** Referenced FILE_TEMPLATE ids (loosely coupled by string, guarded by a test). */
+  /**
+   * Inactive until adopted (`udx add <id>`), so a new capability does not land in every project
+   * on its next `udx sync`. Not adopting it is no decision, so nothing is persisted in `declined`.
+   */
+  optIn?: boolean;
+  /**
+   * Referenced FILE_TEMPLATE ids (loosely coupled by string, guarded by a test — or imported,
+   * where the templates are generated from a list).
+   */
   files: string[];
   /** Referenced canonicalScripts keys. */
   scripts: string[];
@@ -28,6 +38,9 @@ function hasDep(ctx: ProjectContext, name: string): boolean {
 function hasPath(ctx: ProjectContext, rel: string): boolean {
   return exists(abs(ctx.cwd, rel));
 }
+
+/** Script names under which a project runs its own docs reference check. */
+const DOCS_CHECK_SCRIPTS = ['docs:refs:check', 'docs:check'] as const;
 
 export const CAPABILITIES: Capability[] = [
   {
@@ -90,6 +103,23 @@ export const CAPABILITIES: Capability[] = [
       }
       return null;
     }
+  },
+  {
+    id: 'knowledge',
+    label: 'Knowledge layer (docs:check)',
+    optIn: true,
+    files: KNOWLEDGE_TEMPLATE_IDS,
+    scripts: ['docs:check'],
+    devDeps: ['@urbicon-ui/udx'],
+    // A docs check of the project's own — any command other than udx's under either name.
+    supersededBy: (ctx) => {
+      const ours = canonicalScripts(ctx)['docs:check'];
+      for (const name of DOCS_CHECK_SCRIPTS) {
+        const cmd = ctx.pkg.scripts?.[name];
+        if (cmd !== undefined && cmd !== ours) return `${name} script`;
+      }
+      return null;
+    }
   }
 ];
 
@@ -100,9 +130,11 @@ export function findCapability(id: string): Capability | undefined {
 export interface CapabilityState {
   cap: Capability;
   declined: boolean;
-  /** Reason for declining (detected tool or `manual`); empty when active. */
+  /** Opt-in, neither adopted nor declined nor superseded: inactive, offered via `udx add <id>`. */
+  available: boolean;
+  /** Reason for declining (detected tool or `manual`); empty otherwise. */
   reason: string;
-  /** Detected for the first time in this run — not yet persisted in the manifest. */
+  /** Auto-declined in this run and not yet persisted in the manifest (never for an opt-in). */
   fresh: boolean;
   /** Auto-declined, but the tool detected back then is no longer present (reason is stale). */
   stale: boolean;
@@ -110,47 +142,68 @@ export interface CapabilityState {
 
 /**
  * Determines the state per capability. Pure (mutates nothing). Priority:
- * `adopted` (explicitly active, overrides any auto-decline) → `declined` (noted in the manifest)
- * → `supersededBy` (fresh auto-decline, `fresh`). The caller persists fresh declines
- * (init/sync) or only displays them (doctor). A persisted auto-decline whose tool has
- * disappeared is marked `stale` (doctor points this out).
+ * `adopted` (explicitly active, overrides any auto-decline and the opt-in default) → `declined`
+ * (noted in the manifest) → `supersededBy` (auto-decline, `fresh` — except for an opt-in, which
+ * was never a target, so the project decided nothing) → `optIn` (inactive, `available`). The caller
+ * persists fresh declines (init/sync) or only displays them (doctor). A persisted auto-decline
+ * whose tool has disappeared is marked `stale` (doctor points this out).
  */
 export function resolveCapabilities(ctx: ProjectContext, manifest: Manifest): CapabilityState[] {
   return CAPABILITIES.map((cap) => {
-    if (manifest.adopted.includes(cap.id)) {
-      return { cap, declined: false, reason: '', fresh: false, stale: false };
-    }
+    const active: CapabilityState = {
+      cap,
+      declined: false,
+      available: false,
+      reason: '',
+      fresh: false,
+      stale: false
+    };
+    if (manifest.adopted.includes(cap.id)) return active;
     const persisted = manifest.declined[cap.id];
     if (persisted !== undefined) {
       // 'manual' is an intentional choice and never stale; a tool reason is, when it is missing.
       const stale = persisted !== 'manual' && cap.supersededBy(ctx) === null;
-      return { cap, declined: true, reason: persisted, fresh: false, stale };
+      return { ...active, declined: true, reason: persisted, stale };
     }
     const tool = cap.supersededBy(ctx);
-    if (tool) return { cap, declined: true, reason: tool, fresh: true, stale: false };
-    return { cap, declined: false, reason: '', fresh: false, stale: false };
+    if (tool) return { ...active, declined: true, reason: tool, fresh: !cap.optIn };
+    if (cap.optIn) return { ...active, available: true };
+    return active;
   });
 }
 
 export interface DeclinedSets {
-  /** Declined FILE_TEMPLATE id → reason. */
+  /** Inactive FILE_TEMPLATE id → why it is skipped, as `applyFiles`/doctor print it. */
   files: Map<string, string>;
+  /**
+   * Files of an inactive opt-in capability: skipped like the rest of `files`, but reported once
+   * per capability rather than per file — a multi-file skill would otherwise add a line per file
+   * to every run in a project that never asked for it.
+   */
+  unlisted: Set<string>;
   scripts: Set<string>;
   devDeps: Set<string>;
 }
 
-/** Folds the declined capabilities into skip sets for apply/pkg/doctor. */
+/** Folds the inactive capabilities (declined or available opt-in) into skip sets for apply/pkg/doctor. */
 export function declinedSets(states: CapabilityState[]): DeclinedSets {
   const files = new Map<string, string>();
+  const unlisted = new Set<string>();
   const scripts = new Set<string>();
   const devDeps = new Set<string>();
   for (const s of states) {
-    if (!s.declined) continue;
-    for (const f of s.cap.files) files.set(f, s.reason);
+    if (!s.declined && !s.available) continue;
+    const note = s.available
+      ? `opt-in, not added — \`udx add ${s.cap.id}\``
+      : `declined (${s.reason})`;
+    for (const f of s.cap.files) {
+      files.set(f, note);
+      if (s.cap.optIn) unlisted.add(f);
+    }
     for (const sc of s.cap.scripts) scripts.add(sc);
     for (const d of s.cap.devDeps) devDeps.add(d);
   }
-  return { files, scripts, devDeps };
+  return { files, unlisted, scripts, devDeps };
 }
 
 export interface Selection {
@@ -164,8 +217,8 @@ export interface Selection {
 
 /**
  * Resolves `--only` identifiers to concrete building blocks. An identifier is either a
- * capability id (expanded to its file/scripts/devDeps) or a FILE_TEMPLATE id.
- * `validFileIds` comes from the caller, so the lib stays decoupled from the templates.
+ * capability id (expanded to its file/scripts/devDeps) or a FILE_TEMPLATE id (`validFileIds`,
+ * passed in by the caller).
  */
 export function resolveSelection(ids: string[], validFileIds: ReadonlySet<string>): Selection {
   const sel: Selection = { files: new Set(), scripts: new Set(), devDeps: new Set(), unknown: [] };

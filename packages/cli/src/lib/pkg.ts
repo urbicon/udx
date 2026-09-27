@@ -64,7 +64,8 @@ const REPO_GLOBAL_SCRIPTS: Record<string, string> = {
   bump: 'bash scripts/bump.sh patch',
   'bump:minor': 'bash scripts/bump.sh minor',
   'bump:major': 'bash scripts/bump.sh major',
-  prepare: 'lefthook install'
+  prepare: 'lefthook install',
+  'docs:check': 'udx docs check'
 };
 
 export function canonicalScripts(ctx: ProjectContext, tier?: DepTier): Record<string, string> {

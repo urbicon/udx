@@ -49,7 +49,8 @@ export const RENAMED_FROM: Partial<Record<DepName, string>> = {
   '@types/bun': 'bun-types',
   '@urbicon-ui/biome-config': '@urbicon/biome-config',
   '@urbicon-ui/commitlint-config': '@urbicon/commitlint-config',
-  '@urbicon-ui/tsconfig': '@urbicon/tsconfig'
+  '@urbicon-ui/tsconfig': '@urbicon/tsconfig',
+  '@urbicon-ui/udx': '@urbicon/udx'
 };
 
 /** Deps written only into Svelte projects (from the `svelte` catalog). */
@@ -60,11 +61,15 @@ export const SVELTE_DEPS = [
   'svelte-check'
 ] as const;
 
-/** udx's own config packages — unified with the CLI version, hence not in the catalog. */
+/**
+ * udx's own packages — the config presets and the CLI itself (which a project needs locally once a
+ * script calls `udx`, e.g. `docs:check`). Unified with the CLI version, hence not in the catalog.
+ */
 export const URBICON_DEPS = [
   '@urbicon-ui/biome-config',
   '@urbicon-ui/commitlint-config',
-  '@urbicon-ui/tsconfig'
+  '@urbicon-ui/tsconfig',
+  '@urbicon-ui/udx'
 ] as const;
 
 export type DepName =
@@ -94,11 +99,17 @@ function pick<N extends readonly string[]>(
   return out;
 }
 
-/** Pinned versions that `udx init`/`udx sync` write into consumer projects — derived from the catalog. */
+/** Pins every one of `names` to this CLI's own version (`^<version>`). */
+function unified<N extends readonly string[]>(names: N): Record<N[number], string> {
+  return Object.fromEntries(names.map((n) => [n, SELF])) as Record<N[number], string>;
+}
+
+/**
+ * Pinned versions that `udx init`/`udx sync` write into consumer projects — derived from the
+ * catalog (tool + Svelte deps) and from this CLI's version (`URBICON_DEPS`).
+ */
 export const VERSIONS: Record<DepName, string> = {
   ...pick(ws.catalog, TOOL_DEPS),
   ...pick(ws.catalogs.svelte, SVELTE_DEPS),
-  '@urbicon-ui/biome-config': SELF,
-  '@urbicon-ui/commitlint-config': SELF,
-  '@urbicon-ui/tsconfig': SELF
+  ...unified(URBICON_DEPS)
 };

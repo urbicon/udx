@@ -1,6 +1,7 @@
 #!/usr/bin/env bun
 import pkg from '../../package.json' with { type: 'json' };
 import { runAdd, runAdopt, runSkip } from '../commands/capability.ts';
+import { runDocs } from '../commands/docs.ts';
 import { runDoctor } from '../commands/doctor.ts';
 import { type HarnessFlags, runHarness } from '../commands/harness.ts';
 import { helpText } from '../commands/help.ts';
@@ -71,9 +72,20 @@ function parseFlags(argv: string[]): CliFlags {
       case '--no-svelte':
         flags.svelte = false;
         break;
+      // With nothing behind it, a command would run on the current directory — a clean report for
+      // a tree the caller never named — and `--cwd --dry-run` would take the flag as the path and
+      // drop the dry run.
       case '--cwd':
-        flags.cwd = argv[++i] ?? flags.cwd;
+      case '--root': {
+        const v = argv[i + 1];
+        if (!v || v.startsWith('-')) {
+          log.err(`${a} needs a directory`);
+          process.exit(2);
+        }
+        i++;
+        flags.cwd = v;
         break;
+      }
       default:
         if (a?.startsWith('-')) {
           log.err(`Unknown option: ${a}`);
@@ -169,6 +181,12 @@ try {
     case 'unpin': {
       const f = parseFlags(rest);
       code = runUnpin({ cwd: f.cwd, dryRun: f.dryRun, dep: f.positional[0] });
+      break;
+    }
+    case 'docs': {
+      const f = parseFlags(rest);
+      const [sub, ...extra] = f.positional;
+      code = runDocs(sub, { root: f.cwd, json: f.json, extra });
       break;
     }
     default:

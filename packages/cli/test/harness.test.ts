@@ -380,8 +380,8 @@ describe('capabilities', () => {
       project({ name: 'x', devDependencies: { husky: '^9', eslint: '^9' } })
     );
     const sets = declinedSets(resolveCapabilities(ctx, emptyManifest()));
-    expect(sets.files.get('lefthook')).toBe('husky');
-    expect(sets.files.get('biome')).toBe('eslint');
+    expect(sets.files.get('lefthook')).toBe('declined (husky)');
+    expect(sets.files.get('biome')).toBe('declined (eslint)');
     expect(sets.scripts.has('prepare')).toBe(true);
     expect(sets.devDeps.has('@biomejs/biome')).toBe(true);
   });
@@ -393,7 +393,7 @@ describe('capabilities', () => {
       detectContext(dir),
       INIT,
       emptyManifest(),
-      new Map([['lefthook', 'husky']])
+      new Map([['lefthook', 'declined (husky)']])
     );
     expect(existsSync(join(dir, 'lefthook.yml'))).toBe(false);
     const r = res.find((x) => x.dest === 'lefthook.yml');

@@ -25,8 +25,10 @@ cd packages/cli && bun link        # make available globally
 | `udx init`      | Set up the harness in a project (auto-detection Svelte vs. plain TS)     |
 | `udx sync`      | Update managed files — **pull in process improvements**                  |
 | `udx doctor`    | Read-only: check for missing/diverging parts (exit code 1 on problems)   |
+| `udx add <id>`  | Adopt a building block and set it up (also the way to enable an opt-in one) |
 | `udx adopt <id>`| Re-adopt a declined building block (overrides the auto-decline)          |
 | `udx skip <id>` | Permanently decline a building block (own stack — e.g. husky over lefthook) |
+| `udx docs check`| Read-only: the knowledge-layer gate over the project's docs (exit 1 on findings) |
 
 ### Options
 
@@ -38,7 +40,8 @@ cd packages/cli && bun link        # make available globally
 | `--only <ids>`      | only these building blocks (capability or file ids, comma-separated)     |
 | `--diff`            | on drift, show the difference local → template                          |
 | `--svelte` / `--no-svelte` | force Svelte setup / force plain TS setup                         |
-| `--cwd <path>`      | target directory (default: current)                                     |
+| `--cwd <path>`      | target directory (default: current); `--root <path>` is an alias |
+| `--json`            | machine-readable output (`status`, `docs check`)                          |
 
 ## File policies
 
@@ -87,9 +90,34 @@ declined when udx detects a competing stack — without project hardcoding:
 | `git-hooks`   | lefthook + prepare     | husky / `.husky/` / simple-git-hooks / `core.hooksPath` (`.githooks/`) |
 | `lint-format` | biome + lint/format/fix | eslint                       |
 | `dep-updates` | renovate.json          | dependabot / own Renovate config (different location or package.json key) |
+| `knowledge` *(opt-in)* | skill `knowledge-layer` + `docs/DECISIONS.md`, `docs/README.md`, working-docs README + `docs:check` + `@urbicon-ui/udx` | an own `docs:refs:check` / `docs:check` script |
 
 Declined building blocks are not a target (no `doctor` error); the decision is persisted in
 `.udx.json`. Migration: `udx adopt git-hooks && udx sync --only git-hooks`.
+
+An **opt-in** capability is inactive until adopted: `init` and `sync` never write it, and
+`status`/`doctor` list it as available with the command that enables it (`udx add <id>`).
+Nothing about it is persisted until it is adopted.
+
+## Knowledge layer (`udx add knowledge`)
+
+Where a project's knowledge lives and how it retires — instructions, docs, decisions, plans,
+trackers, agent memory — as a Claude Code skill plus the gate that enforces what can be
+checked:
+
+- **The skill** (`.claude/skills/knowledge-layer/`, `managed`): the placement rules, the
+  lifecycle of working documents (living → harvest → `git rm`, no archive), `DECISIONS.md` as
+  the ADR log, one tracker per project, the instruction layer. Source:
+  [`src/assets/skills/knowledge-layer/`](src/assets/skills/knowledge-layer/SKILL.md) — improve
+  it here, `udx sync` carries it to every project.
+- **The gate** (`bun run docs:check` → `udx docs check`): references in the instruction and
+  reference docs resolve, no tracked pointer into an ignored working-docs folder (which must be
+  its own git repository), the index word budget, `CLAUDE.md` reaching `AGENTS.md`, end markers
+  on working documents, no archive folder, no open checkbox outside the tracker. Configured in
+  `package.json` → `"udx": { "docs": { … } }` (keys: the skill's
+  [setup.md](src/assets/skills/knowledge-layer/setup.md) § Configure).
+- **Templates** (`create-only`): `docs/DECISIONS.md`, `docs/README.md` with a canon map, and a
+  README for the working-docs folder.
 
 ## Monorepo
 

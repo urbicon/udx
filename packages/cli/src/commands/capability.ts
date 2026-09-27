@@ -16,7 +16,9 @@ export interface AddFlags extends HarnessFlags {
 
 function listCapabilities(): void {
   log.info('Known building blocks:');
-  for (const cap of CAPABILITIES) log.info(`  ${c.cyan(cap.id)} — ${cap.label}`);
+  for (const cap of CAPABILITIES) {
+    log.info(`  ${c.cyan(cap.id)} — ${cap.label}${cap.optIn ? c.gray(' (opt-in)') : ''}`);
+  }
 }
 
 /** Resolves the building block name from the flags; reports & lists on errors. */

@@ -78,10 +78,12 @@ export function runDoctor(flags: DoctorFlags): number {
     // In a monorepo, package-scoped building blocks are checked per package (below).
     if (isMonorepo && (t.scope ?? 'root') !== 'root') continue;
     if (t.applies && !t.applies(rootCtx)) continue;
+    // Inactive opt-in → reported once under Building blocks.
+    if (declined.unlisted.has(t.id)) continue;
     // Declined capability → no target, hence no error.
-    const reason = declined.files.get(t.id);
-    if (reason) {
-      log.skip(`${t.dest} declined (${reason})`);
+    const note = declined.files.get(t.id);
+    if (note) {
+      log.skip(`${t.dest} ${note}`);
       continue;
     }
     const target = abs(ctx.cwd, t.dest);
@@ -154,20 +156,22 @@ export function runDoctor(flags: DoctorFlags): number {
         if (t.applies && !t.applies(pkgCtx)) continue;
         // Consistent with the root loop: declined capability ⇒ no target (defensive —
         // currently no capability references a package-scoped building block).
-        const reason = declined.files.get(t.id);
-        if (reason) log.skip(`${ws}/${t.dest} declined (${reason})`);
+        const note = declined.files.get(t.id);
+        if (note) log.skip(`${ws}/${t.dest} ${note}`);
         else if (exists(abs(pkgCtx.cwd, t.dest))) pass(`${ws}/${t.dest}`);
         else fail(`missing: ${ws}/${t.dest}`);
       }
     }
   }
 
-  const declinedCaps = capStates.filter((s) => s.declined);
-  if (declinedCaps.length > 0) {
+  const inactiveCaps = capStates.filter((s) => s.declined || s.available);
+  if (inactiveCaps.length > 0) {
     log.plain();
     log.step('Building blocks');
-    for (const s of declinedCaps) {
-      if (s.stale) {
+    for (const s of inactiveCaps) {
+      if (s.available) {
+        log.skip(`${s.cap.label}: available (opt-in) — \`udx add ${s.cap.id}\``);
+      } else if (s.stale) {
         warn(
           `${s.cap.label}: declined as '${s.reason}', but ${s.reason} no longer detected — ` +
             `\`udx add ${s.cap.id}\``
