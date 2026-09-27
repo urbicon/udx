@@ -20,11 +20,11 @@
     },
     "packages/biome-config": {
       "name": "@urbicon-ui/biome-config",
-      "version": "0.2.9",
+      "version": "0.4.0",
     },
     "packages/cli": {
       "name": "@urbicon-ui/udx",
-      "version": "0.2.9",
+      "version": "0.4.0",
       "bin": {
         "udx": "dist/bin/udx.js",
       },
@@ -37,7 +37,7 @@
     },
     "packages/commitlint-config": {
       "name": "@urbicon-ui/commitlint-config",
-      "version": "0.2.9",
+      "version": "0.4.0",
       "dependencies": {
         "@commitlint/config-conventional": "catalog:",
         "@commitlint/types": "^21.0.1",
@@ -56,7 +56,7 @@
     },
     "packages/tsconfig": {
       "name": "@urbicon-ui/tsconfig",
-      "version": "0.2.9",
+      "version": "0.4.0",
     },
   },
   "catalog": {

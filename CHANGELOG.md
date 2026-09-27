@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 This changelog is automatically generated from [Conventional Commits](https://www.conventionalcommits.org).
 
 
+## [0.4.0] - 2026-09-27
+
+### Documentation
+- Describe the opt-in knowledge layer and when a skill belongs in udx
+
+### Features
+- **cli**: Opt-in knowledge capability — a skill, the docs:check gate and templates
+
 ## [0.3.1] - 2026-07-31
 
 ### Bug Fixes
