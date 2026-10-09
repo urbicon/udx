@@ -27,6 +27,20 @@ export function biomeSchemaVersion(biomeJson: string): string | null {
   return biomeJson.match(BIOME_SCHEMA_RE)?.[1] ?? null;
 }
 
+/**
+ * True if version `a` is lower than `b` (`x.y.z`; a missing or non-numeric part counts as 0).
+ * A newer `$schema` than the pin is fine — the pin is a floor (`^`), the installed Biome may be ahead.
+ */
+export function isOlderVersion(a: string, b: string): boolean {
+  const pa = a.split('.').map((n) => Number.parseInt(n, 10) || 0);
+  const pb = b.split('.').map((n) => Number.parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length); i++) {
+    const [x = 0, y = 0] = [pa[i], pb[i]];
+    if (x !== y) return x < y;
+  }
+  return false;
+}
+
 /** `useTabs: true` in a .prettierrc — collides with Biome's space indent. Top-level (regex perf). */
 const PRETTIER_USETABS_RE = /"useTabs"\s*:\s*true\b/;
 
@@ -124,7 +138,7 @@ export function runDoctor(flags: DoctorFlags): number {
     if (exists(biomeJson)) {
       const schemaV = biomeSchemaVersion(readText(biomeJson));
       const pinned = VERSIONS['@biomejs/biome'].replace(RANGE_OPERATOR_RE, '');
-      if (schemaV && schemaV !== pinned)
+      if (schemaV && isOlderVersion(schemaV, pinned))
         warn(
           `biome.json $schema ${schemaV} lags behind biome ${pinned} — ` +
             '`udx sync --only biome --force` (or adjust $schema)'

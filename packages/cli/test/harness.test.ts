@@ -3,7 +3,12 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runAdd, runAdopt, runSkip } from '../src/commands/capability.ts';
-import { biomeSchemaVersion, prettierUsesTabs, runDoctor } from '../src/commands/doctor.ts';
+import {
+  biomeSchemaVersion,
+  isOlderVersion,
+  prettierUsesTabs,
+  runDoctor
+} from '../src/commands/doctor.ts';
 import { installPlan, runHarness } from '../src/commands/harness.ts';
 import { helpText } from '../src/commands/help.ts';
 import { runPin, runUnpin } from '../src/commands/pin.ts';
@@ -570,6 +575,15 @@ describe('biome $schema drift (doctor)', () => {
     const dir = project({ name: 'x' });
     runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
     expect(biomeSchemaVersion(readFileSync(join(dir, 'biome.json'), 'utf8'))).toBe(pinned);
+  });
+
+  test('isOlderVersion: only a lower $schema lags — a newer one is ahead of the pin floor', () => {
+    // Regression: `!==` reported "$schema 2.5.15 lags behind biome 2.5.0".
+    expect(isOlderVersion('2.5.15', '2.5.0')).toBe(false);
+    expect(isOlderVersion('2.5.0', '2.5.0')).toBe(false);
+    expect(isOlderVersion('2.4.16', '2.5.0')).toBe(true);
+    expect(isOlderVersion('2.9.9', '2.10.0')).toBe(true); // numeric, not lexicographic
+    expect(isOlderVersion('3.0.0', '2.10.0')).toBe(false);
   });
 
   test('stale $schema version: doctor warns but does not fail', () => {
