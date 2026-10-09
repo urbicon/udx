@@ -44,7 +44,7 @@
     "release:major": "bash scripts/bump.sh major && git push --follow-tags",
     "stack:update": "bun run scripts/stack-update.ts",
     "changelog": "git-cliff --output CHANGELOG.md",
-    "prepare": "lefthook install"
+    "prepare": "lefthook install || true"
   },
   "devDependencies": {
     "@biomejs/biome": "catalog:",

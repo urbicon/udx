@@ -238,6 +238,8 @@ export function runDoctor(flags: DoctorFlags): number {
       warn(`${label}devDep ${ch.name} ${ch.from} → ${ch.to} (sync switches it)`);
     for (const ch of plan.devDepsToRemove)
       warn(`${label}devDep ${ch.name} replaced by ${ch.to} (sync removes it)`);
+    for (const ch of plan.scriptsStale)
+      warn(`${label}script ${ch.name} is an earlier udx default (sync updates it)`);
     for (const ch of plan.scriptsDrift) warn(`${label}script ${ch.name} diverges`);
     for (const ch of plan.devDepsDrift)
       warn(`${label}devDep ${ch.name} ${ch.from ?? '?'} → ${ch.to} (sync bumps it)`);

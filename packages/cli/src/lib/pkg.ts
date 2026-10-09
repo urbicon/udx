@@ -26,6 +26,8 @@ export interface CatalogChange {
 
 export interface PkgPlan {
   scriptsToAdd: PkgChange[];
+  /** Still an earlier udx default (`PREVIOUS_SCRIPTS`), not a project adjustment → update without --force. */
+  scriptsStale: PkgChange[];
   scriptsDrift: PkgChange[];
   devDepsToAdd: PkgChange[];
   devDepsDrift: PkgChange[];
@@ -64,16 +66,26 @@ const REPO_GLOBAL_SCRIPTS: Record<string, string> = {
   bump: 'bash scripts/bump.sh patch',
   'bump:minor': 'bash scripts/bump.sh minor',
   'bump:major': 'bash scripts/bump.sh major',
-  prepare: 'lefthook install',
+  // `|| true`: without a .git (a build from an export or tarball) lefthook exits non-zero, and a
+  // failing prepare fails `bun install` itself.
+  prepare: 'lefthook install || true',
   'docs:check': 'udx docs check'
 };
 
 /**
  * Kit 3 extends its tsconfig from node_modules (`$app/tsconfig`), which only `svelte-kit sync`
- * writes — a fresh install has to run it. `|| echo ''` as in Kit's own template: a failing sync
- * must not fail the install.
+ * writes — a fresh install has to run it. Neither step may fail the install.
  */
-const KIT3_PREPARE = "lefthook install && (svelte-kit sync || echo '')";
+const KIT3_PREPARE = '(lefthook install || true) && (svelte-kit sync || true)';
+
+/**
+ * Earlier udx defaults per script. A script still holding one was written by udx, not adjusted by
+ * the project, so sync replaces it without --force — like an untouched-stale managed file.
+ */
+const PREVIOUS_SCRIPTS: Record<string, readonly string[]> = {
+  // ≤0.4.1: failed `bun install` wherever there is no .git.
+  prepare: ['lefthook install', "lefthook install && (svelte-kit sync || echo '')"]
+};
 
 export function canonicalScripts(ctx: ProjectContext, tier?: DepTier): Record<string, string> {
   // svelte tier: only the svelte-flavored format/lint (per Svelte package); empty without Svelte.
@@ -190,6 +202,7 @@ export function computePkgPlan(
 ): PkgPlan {
   const plan: PkgPlan = {
     scriptsToAdd: [],
+    scriptsStale: [],
     scriptsDrift: [],
     devDepsToAdd: [],
     devDepsDrift: [],
@@ -208,7 +221,10 @@ export function computePkgPlan(
     if (skip?.scripts?.has(name)) continue;
     const current = scripts[name];
     if (current === undefined) plan.scriptsToAdd.push({ name, to });
-    else if (current !== to) plan.scriptsDrift.push({ name, to, from: current });
+    else if (current !== to) {
+      const stale = PREVIOUS_SCRIPTS[name]?.includes(current);
+      (stale ? plan.scriptsStale : plan.scriptsDrift).push({ name, to, from: current });
+    }
   }
 
   for (const [name, to] of Object.entries(canonicalDevDeps(ctx, tier))) {
@@ -279,9 +295,10 @@ function sortKeys(obj: Record<string, string>): Record<string, string> {
 
 /**
  * Applies the plan to the pkg object (scripts + devDeps of the respective package). Missing
- * scripts/devDeps, version drift, and the `catalog:` switch are always applied — `satisfiesPin`
- * guarantees that this is never a downgrade (the switch is covered by the catalog entry), so it
- * needs no `--force`. Only script drift may be an intentional adjustment → `--force`.
+ * scripts/devDeps, scripts at an earlier udx default, version drift, and the `catalog:` switch
+ * are always applied — `satisfiesPin` guarantees that this is never a downgrade (the switch is
+ * covered by the catalog entry), so it needs no `--force`. Only script drift may be an
+ * intentional adjustment → `--force`.
  * The catalog ENTRIES themselves are written into the root pkg by `applyCatalogEntries` (they only
  * live there). Returns true if something changed.
  */
@@ -290,7 +307,7 @@ export function mutatePkg(pkg: PackageJson, plan: PkgPlan, force: boolean): bool
   const scripts = { ...(pkg.scripts ?? {}) };
   const devDeps = { ...(pkg.devDependencies ?? {}) };
 
-  for (const ch of plan.scriptsToAdd) {
+  for (const ch of [...plan.scriptsToAdd, ...plan.scriptsStale]) {
     scripts[ch.name] = ch.to;
     changed = true;
   }

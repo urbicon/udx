@@ -151,6 +151,13 @@ function pkgRows(plan: PkgPlan, prefix = ''): Row[] {
       detail: 'missing',
       cmd: 'udx sync'
     });
+  for (const ch of plan.scriptsStale)
+    rows.push({
+      state: 'behind',
+      label: `${prefix}${ch.name} (script)`,
+      detail: 'earlier udx default',
+      cmd: 'udx sync'
+    });
   for (const ch of plan.scriptsDrift)
     rows.push({
       state: 'customized',
@@ -239,7 +246,9 @@ export function buildReport(flags: StatusFlags): {
   // "In sync" = canonical scripts/devDeps of the root tier (excluding declined ones) that appear in NO
   // plan list — counted directly rather than arithmetically, so no future capability dep without a
   // canonical counterpart silently miscounts. (Svelte package deps count as action items, not in this root counter.)
-  const plannedScripts = new Set([...plan.scriptsToAdd, ...plan.scriptsDrift].map((ch) => ch.name));
+  const plannedScripts = new Set(
+    [...plan.scriptsToAdd, ...plan.scriptsStale, ...plan.scriptsDrift].map((ch) => ch.name)
+  );
   const plannedDeps = new Set(
     [
       ...plan.devDepsToAdd,

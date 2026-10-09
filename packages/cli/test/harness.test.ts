@@ -533,7 +533,7 @@ describe('SvelteKit 3', () => {
     );
   const render = (id: string, ctx: ProjectContext): Record<string, unknown> =>
     JSON.parse(FILE_TEMPLATES.find((t) => t.id === id)?.render(ctx) ?? '{}');
-  const KIT3_PREPARE = "lefthook install && (svelte-kit sync || echo '')";
+  const KIT3_PREPARE = '(lefthook install || true) && (svelte-kit sync || true)';
 
   test('svelteKitMajor reads the declared range (incl. prereleases), null without Kit', () => {
     expect(svelteKitMajor(kit('^3.0.0'))).toBe(3);
@@ -587,7 +587,7 @@ describe('SvelteKit 3', () => {
   test('prepare also runs svelte-kit sync (Kit 3 only)', () => {
     expect(canonicalScripts(kit('^3.0.0')).prepare).toBe(KIT3_PREPARE);
     expect(canonicalScripts(kit('^3.0.0'), 'root').prepare).toBe(KIT3_PREPARE);
-    expect(canonicalScripts(kit('^2.70.3')).prepare).toBe('lefthook install');
+    expect(canonicalScripts(kit('^2.70.3')).prepare).toBe('lefthook install || true');
   });
 
   test('init writes the Kit 3 prepare and tsconfig', () => {
@@ -596,6 +596,41 @@ describe('SvelteKit 3', () => {
     const pkg = JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf8'));
     expect(pkg.scripts.prepare).toBe(KIT3_PREPARE);
     expect(readFileSync(join(cwd, 'tsconfig.json'), 'utf8')).toContain('$app/tsconfig');
+  });
+});
+
+describe('earlier udx script defaults', () => {
+  const pkgOf = (dir: string) => JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+
+  test('sync replaces the old prepare without --force (no .git broke bun install)', () => {
+    const dir = project({ name: 'x', scripts: { prepare: 'lefthook install' } });
+    const plan = computePkgPlan(detectContext(dir));
+    expect(plan.scriptsStale.map((ch) => ch.name)).toEqual(['prepare']);
+    expect(plan.scriptsDrift.some((ch) => ch.name === 'prepare')).toBe(false);
+    runHarness('sync', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    expect(pkgOf(dir).scripts.prepare).toBe('lefthook install || true');
+  });
+
+  test('the Kit 3 prepare of 0.4.1 as well', () => {
+    const dir = project({
+      name: 'x',
+      devDependencies: { svelte: '^5', '@sveltejs/kit': '^3.0.0' },
+      scripts: { prepare: "lefthook install && (svelte-kit sync || echo '')" }
+    });
+    runHarness('sync', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    expect(pkgOf(dir).scripts.prepare).toBe(
+      '(lefthook install || true) && (svelte-kit sync || true)'
+    );
+  });
+
+  test('a prepare the project adjusted stays drift (only --force replaces it)', () => {
+    const own = 'lefthook install && bun run gen';
+    const dir = project({ name: 'x', scripts: { prepare: own } });
+    const plan = computePkgPlan(detectContext(dir));
+    expect(plan.scriptsStale).toHaveLength(0);
+    expect(plan.scriptsDrift.map((ch) => ch.name)).toEqual(['prepare']);
+    runHarness('sync', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    expect(pkgOf(dir).scripts.prepare).toBe(own);
   });
 });
 
@@ -964,7 +999,7 @@ describe('add (dev-facing = adopt + targeted sync)', () => {
     expect(runAdd(addFlags(dir, false, 'git-hooks'))).toBe(0);
     expect(existsSync(join(dir, 'lefthook.yml'))).toBe(true);
     const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
-    expect(pkg.scripts?.prepare).toBe('lefthook install');
+    expect(pkg.scripts?.prepare).toBe('lefthook install || true');
     expect(pkg.devDependencies?.lefthook).toBeDefined();
     // only this building block — others stay untouched:
     expect(existsSync(join(dir, 'biome.json'))).toBe(false);
@@ -1079,7 +1114,7 @@ describe('runHarness orchestration', () => {
     const dir = project({ name: 'x' });
     runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false, only: ['git-hooks'] });
     const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
-    expect(pkg.scripts?.prepare).toBe('lefthook install');
+    expect(pkg.scripts?.prepare).toBe('lefthook install || true');
     expect(pkg.devDependencies?.lefthook).toBeDefined();
     expect(pkg.scripts?.bump).toBeUndefined();
     expect(pkg.devDependencies?.['@biomejs/biome']).toBeUndefined();
@@ -1218,7 +1253,7 @@ describe('Per-package Svelte tier (D9 WP1)', () => {
     });
     expect(canonicalScripts(plainCtx, 'svelte')).toEqual({});
     expect(canonicalScripts(plainCtx, 'root').lint).toBe('biome check .');
-    expect(canonicalScripts(plainCtx, 'root').prepare).toBe('lefthook install');
+    expect(canonicalScripts(plainCtx, 'root').prepare).toBe('lefthook install || true');
   });
 });
 

@@ -216,13 +216,14 @@ function patchPkg(
     tier,
     s.catalog
   );
-  // Auto = applied without --force (add missing, safe bumps, catalog upkeep + switch).
+  // Auto = applied without --force (add missing, earlier udx defaults, safe bumps, catalog upkeep + switch).
   const catalogChanges =
     plan.catalogEntriesToAdd.length +
     plan.catalogEntriesDrift.length +
     plan.devDepsToCatalog.length;
   const auto =
     plan.scriptsToAdd.length +
+    plan.scriptsStale.length +
     plan.devDepsToAdd.length +
     plan.devDepsDrift.length +
     plan.devDepsToRemove.length +
@@ -239,6 +240,8 @@ function patchPkg(
   }
 
   for (const ch of plan.scriptsToAdd) log.info(`${c.green('+ script')} ${ch.name}`);
+  // Still an earlier udx default, not a project adjustment → no --force needed.
+  for (const ch of plan.scriptsStale) log.info(`${c.cyan('↑ script')} ${ch.name}`);
   for (const ch of plan.devDepsToAdd) log.info(`${c.green('+ devDep')} ${ch.name}@${ch.to}`);
   // Version drift is bumped safely (never a downgrade) — no --force needed.
   for (const ch of plan.devDepsDrift) {
