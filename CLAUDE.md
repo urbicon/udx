@@ -75,7 +75,10 @@ it as *available*. `resolveCapabilities` computes that state; it is never persis
   `prepare` that runs `svelte-kit sync`), `apply` (file engine + legacy-registry cleanup),
   `manifest` (`.udx.json`: 3-way hashes + declined/adopted building blocks),
   `capabilities` (declinable stack bundles + conflict detection + `--only` resolution),
-  `diff` (zero-dep LCS diff for `--diff`), `workspace` (monorepo packages via `Bun.Glob`),
+  `diff` (zero-dep LCS diff for `--diff`), `json` (`formatJson`: generated JSON in Biome's layout —
+  `JSON.stringify` fails the consumer's `biome check`; a test runs Biome on every JSON template;
+  package.json stays `JSON.stringify`, Biome keeps its arrays expanded),
+  `workspace` (monorepo packages via `Bun.Glob`),
   `pkg` (package.json patch), `versions` (pinned versions), `fs`/`log`/`colors`
 - `templates/` — render functions; complex files (`cliff.toml`, `bump.sh`,
   `CLAUDE.md.tpl`) as text assets under `src/assets/` (imported via

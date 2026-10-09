@@ -15,6 +15,7 @@ import skillSetup from '../assets/skills/knowledge-layer/setup.md' with { type: 
 import { type PackageJson, type ProjectContext, usesKit3 } from '../lib/detect.ts';
 import { DEFAULT_WORKING_DOCS, normalizeRepoPath } from '../lib/docs-check/config.ts';
 import { gitIgnoresContents } from '../lib/git.ts';
+import { formatJson } from '../lib/json.ts';
 import { VERSIONS } from '../lib/versions.ts';
 
 /** The project a template is rendered for — `applies` may ask its tree (`cwd`) and `pkg`. */
@@ -91,7 +92,7 @@ function renderBiome(): string {
     extends: ['@urbicon-ui/biome-config/biome-base.json'],
     files: { includes: ['!**/*.svelte'] }
   };
-  return `${JSON.stringify(config, null, 2)}\n`;
+  return formatJson(config);
 }
 
 function svelteTsconfig(ctx: RenderCtx): Record<string, unknown> {
@@ -118,7 +119,7 @@ function renderTsconfig(ctx: RenderCtx): string {
         compilerOptions: { outDir: 'dist' },
         include: ['src']
       };
-  return `${JSON.stringify(config, null, 2)}\n`;
+  return formatJson(config);
 }
 
 function renderCommitlint(): string {

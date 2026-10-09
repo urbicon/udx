@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto';
 import { abs, exists, readJson, readText, writeText } from './fs.ts';
+import { formatJson } from './json.ts';
 
 export const MANIFEST_FILE = '.udx.json';
 
@@ -47,19 +48,18 @@ export function readManifest(cwd: string): Manifest {
   }
 }
 
-/** Serializes with a stable key order — quiet git diffs between runs. */
+/**
+ * Serializes with a stable key order — quiet git diffs between runs — and in Biome's format, since
+ * the file is checked in and linted with the project.
+ */
 function serialize(m: Manifest): string {
-  return `${JSON.stringify(
-    {
-      harness: m.harness,
-      declined: sortObj(m.declined),
-      adopted: [...m.adopted].sort(),
-      files: sortObj(m.files),
-      pinned: sortObj(m.pinned)
-    },
-    null,
-    2
-  )}\n`;
+  return formatJson({
+    harness: m.harness,
+    declined: sortObj(m.declined),
+    adopted: [...m.adopted].sort(),
+    files: sortObj(m.files),
+    pinned: sortObj(m.pinned)
+  });
 }
 
 /**

@@ -28,6 +28,7 @@ import {
 import { readCatalogTables, selectCatalogTable } from '../src/lib/catalog.ts';
 import { detectContext, type ProjectContext, svelteKitMajor } from '../src/lib/detect.ts';
 import { formatDiff } from '../src/lib/diff.ts';
+import { formatJson } from '../src/lib/json.ts';
 import {
   emptyManifest,
   hashContent,
@@ -462,6 +463,66 @@ describe('biome template', () => {
     const includes: string[] = out.files.includes;
     expect(includes).toContain('!**/*.svelte');
     expect(includes.every((p) => p.startsWith('!'))).toBe(true);
+  });
+});
+
+describe('JSON in Biome format', () => {
+  /** The real formatter with the repo's own config (which extends biome-base) is the oracle. */
+  const biomeFormat = (path: string, text: string): string => {
+    const r = Bun.spawnSync(['bunx', '--bun', 'biome', 'format', `--stdin-file-path=${path}`], {
+      cwd: join(import.meta.dir, '../../..'),
+      stdin: Buffer.from(text)
+    });
+    expect(r.exitCode).toBe(0);
+    return r.stdout.toString();
+  };
+  const ctxOf = (devDependencies: Record<string, string>): ProjectContext =>
+    detectContext(project({ name: 'x', devDependencies }));
+
+  test('the JSON templates come out as Biome writes them', () => {
+    const variants = [
+      ctxOf({}),
+      ctxOf({ svelte: '^5', '@sveltejs/kit': '^2.70.3' }),
+      ctxOf({ svelte: '^5', '@sveltejs/kit': '^3.0.0' })
+    ];
+    for (const ctx of variants) {
+      for (const id of ['tsconfig', 'biome']) {
+        const tpl = FILE_TEMPLATES.find((t) => t.id === id);
+        const out = tpl?.render(ctx) ?? '';
+        expect(out).toBe(biomeFormat(tpl?.dest ?? '', out));
+      }
+    }
+  });
+
+  test('so does the manifest, adopted building blocks included', () => {
+    const dir = project({ name: 'x' });
+    writeManifest(
+      dir,
+      { ...emptyManifest(), adopted: ['knowledge'], declined: { 'git-hooks': 'husky' } },
+      false
+    );
+    const out = readFileSync(join(dir, MANIFEST_FILE), 'utf8');
+    expect(out).toBe(biomeFormat(MANIFEST_FILE, out));
+  });
+
+  test('an array stays on one line up to the line width, its comma included', () => {
+    // `  "a": ["…"]` is 11 columns plus the string; 89 characters fill the 100 exactly.
+    for (const n of [88, 89, 90]) {
+      for (const value of [{ a: ['x'.repeat(n)] }, { a: ['x'.repeat(n)], b: 1 }]) {
+        const out = formatJson(value);
+        expect(out).toBe(biomeFormat('x.json', out));
+      }
+    }
+  });
+
+  test('nested and empty values too', () => {
+    const out = formatJson({
+      empty: { list: [], map: {} },
+      objects: [{ files: '*.svelte', options: { parser: 'svelte' } }],
+      mixed: [1, true, null, 'a"b'],
+      deep: { deeper: { list: ['one', 'two'] } }
+    });
+    expect(out).toBe(biomeFormat('x.json', out));
   });
 });
 
