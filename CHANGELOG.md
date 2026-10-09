@@ -4,6 +4,14 @@ All notable changes to this project will be documented in this file.
 This changelog is automatically generated from [Conventional Commits](https://www.conventionalcommits.org).
 
 
+## [0.4.2] - 2026-10-09
+
+### Bug Fixes
+- **commitlint-config**: Let a subject open with a capitalized noun
+- **cli**: Write generated JSON in Biome's format
+- **cli**: Adopt a config's preset dep in the same sync run
+- **cli**: Keep prepare from failing installs without .git
+
 ## [0.4.1] - 2026-10-09
 
 ### Bug Fixes
