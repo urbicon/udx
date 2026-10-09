@@ -7,6 +7,8 @@
 
 /**
  * Builds a commitlint configuration based on `@commitlint/config-conventional`.
+ * `subject-case` is off: in German a subject may open with a noun, which is capitalized
+ * (`feat: Suche über alle Rezepte`), and the rule cannot tell that from an English sentence.
  *
  * @param {CreateConfigOptions} [options]
  * @returns {import('@commitlint/types').UserConfig}
@@ -17,7 +19,7 @@ export function createConfig(options = {}) {
   /** @type {import('@commitlint/types').UserConfig} */
   const config = {
     extends: ['@commitlint/config-conventional'],
-    rules: { ...rules }
+    rules: { 'subject-case': [0], ...rules }
   };
 
   if (scopes.length > 0) {

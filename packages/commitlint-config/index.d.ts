@@ -10,7 +10,10 @@ export interface CreateConfigOptions {
   rules?: UserConfig['rules'];
 }
 
-/** Builds a commitlint configuration based on `@commitlint/config-conventional`. */
+/**
+ * Builds a commitlint configuration based on `@commitlint/config-conventional`, with
+ * `subject-case` off (a German subject may open with a capitalized noun).
+ */
 export function createConfig(options?: CreateConfigOptions): UserConfig;
 
 declare const config: UserConfig;

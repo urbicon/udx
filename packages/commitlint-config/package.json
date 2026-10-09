@@ -35,6 +35,6 @@
   },
   "scripts": {
     "check": "tsc --noEmit",
-    "test": "true"
+    "test": "bun test"
   }
 }

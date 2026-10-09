@@ -31,3 +31,15 @@ export default config;
 
 Scopes are checked as a **warning** (level 1) — an unknown scope does not block
 the commit, but shows up as a hint. Additional rules via `rules`.
+
+Unlike `config-conventional`, the subject's case is not checked (`subject-case`
+is off): a German subject may open with a noun, which is capitalized
+(`feat: Suche über alle Rezepte`). To restore the upstream check:
+
+```js
+createConfig({
+  rules: {
+    'subject-case': [2, 'never', ['sentence-case', 'start-case', 'pascal-case', 'upper-case']]
+  }
+});
+```
