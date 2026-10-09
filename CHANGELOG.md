@@ -4,6 +4,18 @@ All notable changes to this project will be documented in this file.
 This changelog is automatically generated from [Conventional Commits](https://www.conventionalcommits.org).
 
 
+## [0.4.1] - 2026-10-09
+
+### Bug Fixes
+- **cli**: Keep ** out of the biome.json template's files.includes
+- **cli**: Doctor only flags a biome $schema older than the pin
+
+### CI/CD
+- Publish from GitHub Actions via npm trusted publishing
+
+### Features
+- **cli**: Support SvelteKit 3 in the tsconfig template and prepare
+
 ## [0.4.0] - 2026-09-27
 
 ### Documentation
