@@ -856,6 +856,15 @@ describe('resolveSelection (--only)', () => {
     const sel = resolveSelection(['cliff'], fileIds);
     expect(sel.files.has('cliff')).toBe(true);
     expect(sel.scripts.size).toBe(0);
+    expect(sel.devDeps.size).toBe(0);
+  });
+
+  test('a preset-wired config brings its @urbicon-ui preset along', () => {
+    expect([...resolveSelection(['tsconfig'], fileIds).devDeps]).toEqual(['@urbicon-ui/tsconfig']);
+    expect([...resolveSelection(['biome'], fileIds).devDeps]).toEqual(['@urbicon-ui/biome-config']);
+    expect([...resolveSelection(['commitlint'], fileIds).devDeps]).toEqual([
+      '@urbicon-ui/commitlint-config'
+    ]);
   });
 
   test('unknown identifiers end up in unknown', () => {
@@ -1994,6 +2003,44 @@ describe('Wiring', () => {
     const row = wiringRows.find((r) => r.label === 'commitlint.config.mjs');
     expect(row?.state).toBe('unwired');
     expect(row?.cmd).toBe('udx sync --only commitlint --force');
+  });
+
+  test('a config this run writes counts as wired, even before it is on disk', () => {
+    const dir = project({ name: 'x' });
+    writeFileSync(join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions: {} }));
+    const status = detectWiring(detectContext(dir), new Set(['tsconfig'])).find(
+      (s) => s.id === 'tsconfig'
+    )?.status;
+    expect(status).toBe('wired');
+  });
+
+  test('sync --only tsconfig --force adopts the preset and its dep in one run', () => {
+    const dir = project({ name: 'x', devDependencies: { typescript: '^6.0.0' } });
+    writeFileSync(join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions: {} }));
+    const flags = { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false, only: ['tsconfig'] };
+    // Without --force the own config stays, and so does the dep it doesn't use.
+    runHarness('sync', flags);
+    let pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+    expect(pkg.devDependencies['@urbicon-ui/tsconfig']).toBeUndefined();
+
+    runHarness('sync', { ...flags, force: true });
+    pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+    expect(readFileSync(join(dir, 'tsconfig.json'), 'utf8')).toContain('@urbicon-ui/tsconfig');
+    expect(pkg.devDependencies['@urbicon-ui/tsconfig']).toBe(VERSIONS['@urbicon-ui/tsconfig']);
+    // Surgical: nothing beyond the building block.
+    expect(Object.keys(pkg.devDependencies).sort()).toEqual(['@urbicon-ui/tsconfig', 'typescript']);
+    expect(pkg.scripts).toBeUndefined();
+  });
+
+  test('monorepo: package tsconfigs created next to an own root tsconfig bring the dep', () => {
+    const dir = monorepo();
+    writeFileSync(join(dir, 'tsconfig.json'), JSON.stringify({ compilerOptions: {} }));
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd: dir, dryRun: false });
+    expect(readFileSync(join(dir, 'packages/api/tsconfig.json'), 'utf8')).toContain(
+      '@urbicon-ui/tsconfig'
+    );
+    const pkg = JSON.parse(readFileSync(join(dir, 'package.json'), 'utf8'));
+    expect(pkg.devDependencies['@urbicon-ui/tsconfig']).toBeDefined();
   });
 });
 

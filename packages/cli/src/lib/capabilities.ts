@@ -4,6 +4,7 @@ import { abs, exists } from './fs.ts';
 import type { Manifest } from './manifest.ts';
 import { canonicalScripts } from './pkg.ts';
 import type { DepName } from './versions.ts';
+import { presetDepOf } from './wiring.ts';
 
 /**
  * A declinable stack capability that bundles file(s), scripts, and devDeps.
@@ -218,7 +219,7 @@ export interface Selection {
 /**
  * Resolves `--only` identifiers to concrete building blocks. An identifier is either a
  * capability id (expanded to its file/scripts/devDeps) or a FILE_TEMPLATE id (`validFileIds`,
- * passed in by the caller).
+ * passed in by the caller; a preset-wired config also selects its @urbicon-ui preset dep).
  */
 export function resolveSelection(ids: string[], validFileIds: ReadonlySet<string>): Selection {
   const sel: Selection = { files: new Set(), scripts: new Set(), devDeps: new Set(), unknown: [] };
@@ -230,6 +231,9 @@ export function resolveSelection(ids: string[], validFileIds: ReadonlySet<string
       for (const d of cap.devDeps) sel.devDeps.add(d);
     } else if (validFileIds.has(id)) {
       sel.files.add(id);
+      // A config that extends a preset is useless without it (wiring still drops a self-managed one).
+      const preset = presetDepOf(id);
+      if (preset) sel.devDeps.add(preset);
     } else {
       sel.unknown.push(id);
     }

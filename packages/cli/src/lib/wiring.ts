@@ -80,12 +80,24 @@ function scan(paths: string[], dep: string): WiringStatus {
   return present ? 'self-managed' : 'absent';
 }
 
-/** Determines the wiring status per @urbicon-ui config package. Read-only. */
-export function detectWiring(ctx: ProjectContext): WiringState[] {
+/**
+ * Determines the wiring status per @urbicon-ui config package. Read-only. `written` = FILE_TEMPLATE
+ * ids whose udx template this run writes (or would write, in a dry run): the template references
+ * its preset, so the config counts as wired before or without it being on disk.
+ */
+export function detectWiring(
+  ctx: ProjectContext,
+  written: ReadonlySet<string> = new Set()
+): WiringState[] {
   return CONFIGS.map(({ candidates, ...rest }) => ({
     ...rest,
-    status: scan(candidates(ctx), rest.dep)
+    status: written.has(rest.id) ? 'wired' : scan(candidates(ctx), rest.dep)
   }));
+}
+
+/** The @urbicon-ui preset a FILE_TEMPLATE's config references (`--only <id>` brings it along). */
+export function presetDepOf(fileId: string): DepName | undefined {
+  return CONFIGS.find((c) => c.id === fileId)?.dep;
 }
 
 /**

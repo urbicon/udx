@@ -18,7 +18,7 @@ import { c } from '../lib/colors.ts';
 import { detectContext, type PackageJson, type ProjectContext, usesKit3 } from '../lib/detect.ts';
 import { formatDiff } from '../lib/diff.ts';
 import { abs, exists, readText, writeJson } from '../lib/fs.ts';
-import { log, reportAction } from '../lib/log.ts';
+import { type FileAction, log, reportAction } from '../lib/log.ts';
 import { MANIFEST_FILE, type Manifest, readManifest, writeManifest } from '../lib/manifest.ts';
 import {
   applyCatalogEntries,
@@ -134,6 +134,14 @@ function reportWiring(wiring: WiringState[]): void {
   }
   log.info(c.gray('… or keep your own config (do nothing).'));
 }
+
+/** File actions that put (or would put) the template's content on disk. */
+const WRITES: ReadonlySet<FileAction> = new Set([
+  'created',
+  'updated',
+  'would-create',
+  'would-update'
+]);
 
 function ensurePackageJson(cwd: string, dryRun: boolean): void {
   const path = abs(cwd, 'package.json');
@@ -394,8 +402,6 @@ export function runHarness(
   const manifest = manifestOverride ?? readManifest(ctx.cwd);
   const capStates = resolveCapabilities(ctx, manifest);
   const declined = declinedSets(capStates);
-  const wiring = detectWiring(ctx);
-  const wiringSkip = wiringSkipDeps(wiring);
 
   // --only: resolve the selection to concrete building blocks (null = all).
   const validFileIds = new Set(FILE_TEMPLATES.map((t) => t.id));
@@ -473,6 +479,12 @@ export function runHarness(
   }
   if (selection && allResults.length === 0)
     log.warn('--only: no matching file applied (the applies condition may not match).');
+
+  // Wiring only now: a config adopted in this run (`--only tsconfig --force`) references its preset,
+  // so the preset dep lands in the same run — in a dry run too, where the file isn't written yet.
+  const written = new Set(allResults.flatMap((r) => (r.id && WRITES.has(r.action) ? [r.id] : [])));
+  const wiring = detectWiring(ctx, written);
+  const wiringSkip = wiringSkipDeps(wiring);
 
   // Handle auto-declines only without --only: --only is surgical (touches only the named building
   // blocks); the decline is deterministic and is persisted by the next full `sync`. This way no
