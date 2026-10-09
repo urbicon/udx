@@ -1,5 +1,5 @@
 import { type CatalogTables, selectCatalogTable } from './catalog.ts';
-import type { PackageJson, ProjectContext } from './detect.ts';
+import { type PackageJson, type ProjectContext, usesKit3 } from './detect.ts';
 import {
   type DepName,
   RENAMED_FROM,
@@ -68,15 +68,25 @@ const REPO_GLOBAL_SCRIPTS: Record<string, string> = {
   'docs:check': 'udx docs check'
 };
 
+/**
+ * Kit 3 extends its tsconfig from node_modules (`$app/tsconfig`), which only `svelte-kit sync`
+ * writes — a fresh install has to run it. `|| echo ''` as in Kit's own template: a failing sync
+ * must not fail the install.
+ */
+const KIT3_PREPARE = "lefthook install && (svelte-kit sync || echo '')";
+
 export function canonicalScripts(ctx: ProjectContext, tier?: DepTier): Record<string, string> {
   // svelte tier: only the svelte-flavored format/lint (per Svelte package); empty without Svelte.
   if (tier === 'svelte') return ctx.svelte ? { format: SVELTE_FORMAT, lint: SVELTE_LINT } : {};
+  const repoGlobal = usesKit3(ctx)
+    ? { ...REPO_GLOBAL_SCRIPTS, prepare: KIT3_PREPARE }
+    : REPO_GLOBAL_SCRIPTS;
   // root tier: repo-global scripts + non-svelte format/lint (biome covers all packages).
-  if (tier === 'root') return { format: BASE_FORMAT, lint: BASE_LINT, ...REPO_GLOBAL_SCRIPTS };
+  if (tier === 'root') return { format: BASE_FORMAT, lint: BASE_LINT, ...repoGlobal };
   // No tier (single-package): everything, svelte-flavored if svelte — previous behavior.
   const format = ctx.svelte ? SVELTE_FORMAT : BASE_FORMAT;
   const lint = ctx.svelte ? SVELTE_LINT : BASE_LINT;
-  return { format, lint, ...REPO_GLOBAL_SCRIPTS };
+  return { format, lint, ...repoGlobal };
 }
 
 /** root-tier devDeps: repo-global tools + TS toolchain + @urbicon-ui presets (everything except svelte). */

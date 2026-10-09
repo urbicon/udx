@@ -15,7 +15,7 @@ import {
 } from '../lib/capabilities.ts';
 import type { CatalogTables } from '../lib/catalog.ts';
 import { c } from '../lib/colors.ts';
-import { detectContext, type PackageJson, type ProjectContext } from '../lib/detect.ts';
+import { detectContext, type PackageJson, type ProjectContext, usesKit3 } from '../lib/detect.ts';
 import { formatDiff } from '../lib/diff.ts';
 import { abs, exists, readText, writeJson } from '../lib/fs.ts';
 import { log, reportAction } from '../lib/log.ts';
@@ -309,10 +309,10 @@ function printFooter(
       log.info(`1. ${c.cyan('bun install')} ${c.gray(`(deps${hooks})`)}${tip}`);
     }
     log.info(`2. Add scopes in ${c.cyan('commitlint.config.mjs')}`);
-    if (ctx.svelte)
-      log.info(
-        `3. ${c.cyan('bunx svelte-kit sync')} ${c.gray('(generates .svelte-kit/tsconfig.json)')}`
-      );
+    if (ctx.svelte) {
+      const generated = usesKit3(ctx) ? '$app/tsconfig' : '.svelte-kit/tsconfig.json';
+      log.info(`3. ${c.cyan('bunx svelte-kit sync')} ${c.gray(`(generates ${generated})`)}`);
+    }
   } else {
     log.ok('Sync complete.');
     if (install.offer)

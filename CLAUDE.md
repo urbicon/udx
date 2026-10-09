@@ -71,7 +71,8 @@ it as *available*. `resolveCapabilities` computes that state; it is never persis
 - `commands/harness.ts` — shared `init`/`sync` logic
 - `commands/doctor.ts` — read-only drift check
 - `commands/capability.ts` — `adopt`/`skip` (adopt/decline building blocks)
-- `lib/` — `detect` (Svelte detection), `apply` (file engine + legacy-registry cleanup),
+- `lib/` — `detect` (Svelte detection; SvelteKit major — Kit 3 gets `$app/tsconfig` and a
+  `prepare` that runs `svelte-kit sync`), `apply` (file engine + legacy-registry cleanup),
   `manifest` (`.udx.json`: 3-way hashes + declined/adopted building blocks),
   `capabilities` (declinable stack bundles + conflict detection + `--only` resolution),
   `diff` (zero-dep LCS diff for `--diff`), `workspace` (monorepo packages via `Bun.Glob`),

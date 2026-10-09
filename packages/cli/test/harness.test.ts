@@ -26,7 +26,7 @@ import {
   resolveSelection
 } from '../src/lib/capabilities.ts';
 import { readCatalogTables, selectCatalogTable } from '../src/lib/catalog.ts';
-import { detectContext, type ProjectContext } from '../src/lib/detect.ts';
+import { detectContext, type ProjectContext, svelteKitMajor } from '../src/lib/detect.ts';
 import { formatDiff } from '../src/lib/diff.ts';
 import {
   emptyManifest,
@@ -462,6 +462,79 @@ describe('biome template', () => {
     const includes: string[] = out.files.includes;
     expect(includes).toContain('!**/*.svelte');
     expect(includes.every((p) => p.startsWith('!'))).toBe(true);
+  });
+});
+
+describe('SvelteKit 3', () => {
+  const kit = (spec: string, extra: Record<string, unknown> = {}): ProjectContext =>
+    detectContext(
+      project({ name: 'x', devDependencies: { svelte: '^5', '@sveltejs/kit': spec }, ...extra })
+    );
+  const render = (id: string, ctx: ProjectContext): Record<string, unknown> =>
+    JSON.parse(FILE_TEMPLATES.find((t) => t.id === id)?.render(ctx) ?? '{}');
+  const KIT3_PREPARE = "lefthook install && (svelte-kit sync || echo '')";
+
+  test('svelteKitMajor reads the declared range (incl. prereleases), null without Kit', () => {
+    expect(svelteKitMajor(kit('^3.0.0'))).toBe(3);
+    expect(svelteKitMajor(kit('3.0.0-next.27'))).toBe(3);
+    expect(svelteKitMajor(kit('^2.70.3'))).toBe(2);
+    expect(svelteKitMajor(detectContext(project({ name: 'x' })))).toBeNull();
+  });
+
+  test('svelteKitMajor resolves catalog: — own catalog, named catalog, workspace root', () => {
+    const ws = (catalogs: Record<string, unknown>): Record<string, unknown> => ({
+      workspaces: { packages: ['packages/*'], ...catalogs }
+    });
+    expect(svelteKitMajor(kit('catalog:', ws({ catalog: { '@sveltejs/kit': '^3.0.1' } })))).toBe(3);
+    expect(
+      svelteKitMajor(
+        kit('catalog:svelte', ws({ catalogs: { svelte: { '@sveltejs/kit': '^2.70.0' } } }))
+      )
+    ).toBe(2);
+    // Monorepo package: the catalog lives in the workspace root above it.
+    const root = project({ name: 'root', ...ws({ catalog: { '@sveltejs/kit': '^3.0.1' } }) });
+    const app = join(root, 'packages/app');
+    mkdirSync(app, { recursive: true });
+    writeFileSync(
+      join(app, 'package.json'),
+      JSON.stringify({ name: 'app', devDependencies: { '@sveltejs/kit': 'catalog:' } })
+    );
+    expect(svelteKitMajor(detectContext(app))).toBe(3);
+  });
+
+  test('svelteKitMajor falls back to the installed package for a range without a version', () => {
+    const ctx = kit('latest');
+    const installed = join(ctx.cwd, 'node_modules/@sveltejs/kit');
+    mkdirSync(installed, { recursive: true });
+    writeFileSync(join(installed, 'package.json'), JSON.stringify({ version: '3.0.1' }));
+    expect(svelteKitMajor(ctx)).toBe(3);
+  });
+
+  test('tsconfig extends $app/tsconfig and spells out types + include', () => {
+    expect(render('tsconfig', kit('^3.0.0'))).toEqual({
+      extends: ['@urbicon-ui/tsconfig/svelte.json', '$app/tsconfig'],
+      compilerOptions: { types: ['$app/types', 'node', 'bun'] },
+      include: ['src', 'vite.config.ts']
+    });
+    // Kit 2 keeps the generated config from .svelte-kit/.
+    expect(render('tsconfig', kit('^2.70.3')).extends).toEqual([
+      '@urbicon-ui/tsconfig/svelte.json',
+      './.svelte-kit/tsconfig.json'
+    ]);
+  });
+
+  test('prepare also runs svelte-kit sync (Kit 3 only)', () => {
+    expect(canonicalScripts(kit('^3.0.0')).prepare).toBe(KIT3_PREPARE);
+    expect(canonicalScripts(kit('^3.0.0'), 'root').prepare).toBe(KIT3_PREPARE);
+    expect(canonicalScripts(kit('^2.70.3')).prepare).toBe('lefthook install');
+  });
+
+  test('init writes the Kit 3 prepare and tsconfig', () => {
+    const { cwd } = kit('^3.0.0');
+    runHarness('init', { ...HARNESS_DEFAULTS, cwd, dryRun: false });
+    const pkg = JSON.parse(readFileSync(join(cwd, 'package.json'), 'utf8'));
+    expect(pkg.scripts.prepare).toBe(KIT3_PREPARE);
+    expect(readFileSync(join(cwd, 'tsconfig.json'), 'utf8')).toContain('$app/tsconfig');
   });
 });
 

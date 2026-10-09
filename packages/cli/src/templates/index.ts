@@ -12,7 +12,7 @@ import skillEvidence from '../assets/skills/knowledge-layer/evidence.md' with { 
 import skillPlacement from '../assets/skills/knowledge-layer/placement.md' with { type: 'text' };
 import skillMain from '../assets/skills/knowledge-layer/SKILL.md' with { type: 'text' };
 import skillSetup from '../assets/skills/knowledge-layer/setup.md' with { type: 'text' };
-import type { PackageJson, ProjectContext } from '../lib/detect.ts';
+import { type PackageJson, type ProjectContext, usesKit3 } from '../lib/detect.ts';
 import { DEFAULT_WORKING_DOCS, normalizeRepoPath } from '../lib/docs-check/config.ts';
 import { gitIgnoresContents } from '../lib/git.ts';
 import { VERSIONS } from '../lib/versions.ts';
@@ -94,12 +94,25 @@ function renderBiome(): string {
   return `${JSON.stringify(config, null, 2)}\n`;
 }
 
+function svelteTsconfig(ctx: RenderCtx): Record<string, unknown> {
+  if (usesKit3(ctx)) {
+    // Kit 3's generated config (`$app/tsconfig`, in node_modules) sets no `include`, and its
+    // `types` would replace the preset's — so both are spelled out here.
+    return {
+      extends: ['@urbicon-ui/tsconfig/svelte.json', '$app/tsconfig'],
+      compilerOptions: { types: ['$app/types', 'node', 'bun'] },
+      include: ['src', 'vite.config.ts']
+    };
+  }
+  return {
+    extends: ['@urbicon-ui/tsconfig/svelte.json', './.svelte-kit/tsconfig.json'],
+    compilerOptions: { baseUrl: '.' }
+  };
+}
+
 function renderTsconfig(ctx: RenderCtx): string {
   const config = ctx.svelte
-    ? {
-        extends: ['@urbicon-ui/tsconfig/svelte.json', './.svelte-kit/tsconfig.json'],
-        compilerOptions: { baseUrl: '.' }
-      }
+    ? svelteTsconfig(ctx)
     : {
         extends: '@urbicon-ui/tsconfig/base.json',
         compilerOptions: { outDir: 'dist' },
