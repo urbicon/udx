@@ -39,10 +39,9 @@
     "bump": "bash scripts/bump.sh patch",
     "bump:minor": "bash scripts/bump.sh minor",
     "bump:major": "bash scripts/bump.sh major",
-    "release": "bash scripts/bump.sh patch && git push --follow-tags && bun run release:publish",
-    "release:minor": "bash scripts/bump.sh minor && git push --follow-tags && bun run release:publish",
-    "release:major": "bash scripts/bump.sh major && git push --follow-tags && bun run release:publish",
-    "release:publish": "bash scripts/publish.sh",
+    "release": "bash scripts/bump.sh patch && git push --follow-tags",
+    "release:minor": "bash scripts/bump.sh minor && git push --follow-tags",
+    "release:major": "bash scripts/bump.sh major && git push --follow-tags",
     "stack:update": "bun run scripts/stack-update.ts",
     "changelog": "git-cliff --output CHANGELOG.md",
     "prepare": "lefthook install"

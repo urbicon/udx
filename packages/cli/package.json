@@ -29,7 +29,7 @@
     "check": "tsc --noEmit",
     "test": "bun test",
     "clean": "rm -rf dist node_modules",
-    "prepublishOnly": "bun run build"
+    "prepack": "bun run build"
   },
   "keywords": [
     "urbicon",

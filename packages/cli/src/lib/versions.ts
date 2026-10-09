@@ -5,7 +5,7 @@ import cliPkg from '../../package.json' with { type: 'json' };
  * The @urbicon-ui config packages are versioned in unison — they always carry the same
  * version as this CLI (see scripts/bump.sh). Therefore derive it from the own package.json
  * instead of hardcoding: a release pulls the consumer pins along automatically
- * (assuming a fresh build, which prepublishOnly guarantees).
+ * (assuming a fresh build, which the CLI's prepack script guarantees).
  */
 /** Version of this CLI — source for the `harness` field in the project manifest. */
 export const CLI_VERSION = cliPkg.version;

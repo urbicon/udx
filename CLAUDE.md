@@ -129,14 +129,19 @@ Run the CLI locally without building: `bun run packages/cli/src/bin/udx.ts <comm
 Conventional Commits, scopes: `cli`, `biome-config`, `commitlint-config`,
 `tsconfig`, `claude`, `deps`. `bun run bump[:minor|:major]` → version + changelog
 (git-cliff) + annotated tag, then push with `git push --follow-tags`. `bun run
-release[:minor|:major]` chains the lot: bump + push + `release:publish`.
+release[:minor|:major]` chains bump + push; the pushed tag triggers the publish in CI.
 
 ## Distribution
 
 `@urbicon-ui/*` → the **public npm registry** (no token to install, no scope mapping — the
-packages resolve out of the box). Only **publishing** needs a token: `bun publish` reads
-`$NPM_TOKEN` from `.npmrc` (`:_authToken=$NPM_TOKEN`) — Bun interpolates `$VAR`,
-not `${VAR}`, and the file holds only the env reference, not a secret. Scoped packages
+packages resolve out of the box). **Publishing** runs in CI, never locally:
+`.github/workflows/release.yml` fires on a `v*` tag, a credential-free `gate` job
+lints/checks/tests and packs (`scripts/pack-release.ts` — `bun pm pack` resolves
+`catalog:`/`workspace:`, the CLI builds via `prepack`, publish order lives there), and a
+`publish` job uploads the tarballs via **npm trusted publishing** (OIDC, no token). That
+job is the one place the npm CLI appears: `bun publish` has no OIDC support. Each
+package needs a trusted publisher on npmjs.com (`urbicon/udx`, `release.yml`) — a new
+package must be published once by hand before one can be attached. Scoped packages
 are published publicly via `publishConfig.access` in each package.json.
 The **2026-07 move** (Codeberg → GitHub, own registry → npm) also renamed the scope
 `@urbicon/*` → `@urbicon-ui/*` (`urbicon` was taken on npm). Two migration paths carry
@@ -146,6 +151,5 @@ consumers of udx ≤0.2.9 across, both self-healing via `udx sync`:
 successor. Caveat: a create-only config (`biome.json` etc.) still referencing the old
 package makes the preset count as *self-managed* (wiring) — then the dep is deliberately
 left alone until `udx sync --only <id> --force` rewrites the config. `bun run release`
-runs the full pipeline (bump → push → publish, config packages before the CLI);
-`release:publish` alone only publishes. `versions.ts` automatically derives the
-`@urbicon-ui/*` pins from its own version.
+runs the full pipeline (bump → push → CI publish, config packages before the CLI).
+`versions.ts` automatically derives the `@urbicon-ui/*` pins from its own version.

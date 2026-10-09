@@ -73,19 +73,22 @@ bun run lint                           # Biome
 ## Publishing (npm)
 
 The `@urbicon-ui/*` packages are published to the public npm registry. Installing needs
-no token; only **publishing** does — an `NPM_TOKEN` (automation token with publish
-rights for the `@urbicon-ui` scope) in the environment or a gitignored `.env`. `bun
-publish` reads it from `.npmrc` (`…:_authToken=$NPM_TOKEN`) — the file holds only the
-env reference, no secret. Scoped packages go out public via `publishConfig.access`.
+no token, and neither does publishing: GitHub Actions publishes via **npm trusted
+publishing** (OIDC) when a `vX.Y.Z` tag is pushed (`.github/workflows/release.yml`).
+Scoped packages go out public via `publishConfig.access`, with provenance attached.
 
 ```bash
-# 1. Prepare the release (version + changelog + tag, unified across all packages)
-bun run bump                    # or bump:minor / bump:major
-
-# 2. Preview, then publish (config packages before the CLI; the CLI builds dist/ via prepublishOnly)
-bun run release:publish --dry-run
-bun run release:publish
-
-# 3. Push tags
-git push --follow-tags
+# Version + changelog + tag (unified across all packages), then push — CI publishes
+bun run release                 # or release:minor / release:major
 ```
+
+The workflow gates on lint, type check and tests, packs the tarballs
+(`scripts/pack-release.ts`, config packages before the CLI) and uploads them; versions
+already on the registry are skipped, so re-running a failed run is safe. A manual run
+(`workflow_dispatch`) rehearses everything without publishing.
+
+**One-time setup per package** (also for a new package, after its first publish): add a
+trusted publisher on npmjs.com → package → *Settings* → *Trusted Publisher* → GitHub
+Actions with repository `urbicon/udx` and workflow `release.yml` — or
+`npm trust github <package> --repo urbicon/udx --file release.yml --allow-publish`
+(npm ≥ 11.15, logged in with 2FA).

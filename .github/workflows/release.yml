@@ -1,0 +1,157 @@
+name: Release
+
+# Publishes the four @urbicon-ui packages when a `vX.Y.Z` tag is pushed — which
+# `bun run release[:minor|:major]` does: bump.sh commits and tags, then
+# `git push --follow-tags` hands over to this workflow.
+#
+# TWO JOBS, ON PURPOSE (the same split as urbicon/ui):
+#   gate     installs, lints, type-checks, tests and packs the tarballs. Install
+#            scripts of dependencies run here — and the job holds no publishing
+#            credential of any kind.
+#   publish  downloads the packed tarballs and uploads them. No checkout, no
+#            install: nothing but npm runs where the credential exists.
+#
+# AUTHENTICATION: npm trusted publishing (OIDC). The job mints a short-lived
+# credential bound to this repository and this workflow file — there is no
+# token to leak or to expire. Each package needs a trusted publisher on
+# npmjs.com (repository urbicon/udx, workflow release.yml); provenance is
+# attached automatically. npm, not bun, does the upload: `bun publish` has no
+# OIDC support, so the npm CLI appears here and nowhere else.
+
+on:
+  push:
+    tags:
+      - 'v*'
+  # Rehearsal: run the gate, pack, mint the OIDC credential and let npm validate
+  # the tarballs — without publishing, unless `dry_run` is unticked. Versions
+  # already on the registry are skipped either way.
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Pack and validate, but do not publish'
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  gate:
+    name: Verify & pack
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install
+        run: bun install --frozen-lockfile
+
+      # bump.sh runs build/test before tagging, but only locally, can be skipped
+      # (BUMP_SKIP_VERIFY=1) and leaves out lint and the type check. This gate is
+      # the last line of defence before an irreversible publish.
+      - name: Lint
+        run: bun run lint
+      - name: Type check
+        run: bun run check
+      - name: Test
+        run: bun run test
+
+      # Tarballs plus a manifest naming them in publish order — everything the
+      # publish job needs, so it needs neither a checkout nor node_modules.
+      - name: Pack
+        env:
+          # On a tag run every package must carry the version the tag names.
+          RELEASE_TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: bun run scripts/pack-release.ts
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-tarballs
+          path: release-tarballs/
+          retention-days: 7
+          if-no-files-found: error
+
+  publish:
+    name: Publish to npm
+    needs: gate
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Mints the OIDC credential. Without it npm has nothing to authenticate with.
+      id-token: write
+    env:
+      # `workflow_dispatch` sends 'true'/'false'; a tag push sends nothing, and a
+      # tag push is the real thing.
+      DRY_RUN: ${{ inputs.dry_run }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-tarballs
+          path: release-tarballs
+
+      # Trusted publishing needs npm >= 11.5.1 on Node >= 22.14. An older npm
+      # would quietly fall back to token auth — so assert it, don't assume it.
+      - uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+      - name: Assert npm supports trusted publishing
+        run: |
+          echo "npm $(npm --version) on node $(node --version)"
+          npm --version | awk -F. '
+            ($1 > 11) || ($1 == 11 && ($2 > 5 || ($2 == 5 && $3 >= 1))) { exit 0 }
+            { print "npm >= 11.5.1 required for trusted publishing"; exit 1 }
+          '
+
+      # The part of OIDC that is testable without publishing: can this job mint
+      # a credential at all? Prints the claims npm matches against the trusted
+      # publisher (never the token). Whether npmjs.com ACCEPTS the credential
+      # only shows on a real publish.
+      - name: Verify the OIDC credential can be minted
+        run: |
+          set -euo pipefail
+          if [ -z "${ACTIONS_ID_TOKEN_REQUEST_URL:-}" ]; then
+            echo "::error::No OIDC environment — the job is missing 'permissions: id-token: write'"
+            exit 1
+          fi
+          CODE=$(curl -sS -o /tmp/oidc.json -w '%{http_code}' \
+            -H "Authorization: bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=npm:registry.npmjs.org")
+          if [ "$CODE" != "200" ]; then
+            echo "::error::OIDC token request returned HTTP $CODE"
+            exit 1
+          fi
+          node -e '
+            const { value } = require("/tmp/oidc.json");
+            const c = JSON.parse(Buffer.from(value.split(".")[1], "base64url").toString());
+            console.log("OIDC ok — repository:", c.repository, "| workflow_ref:", c.workflow_ref);
+          '
+          rm -f /tmp/oidc.json
+
+      - name: Publish
+        working-directory: release-tarballs
+        run: |
+          set -euo pipefail
+          published=0
+          skipped=0
+          while IFS=$'\t' read -r name version file; do
+            # Idempotent: a re-run after a partial failure resumes instead of erroring.
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "skip  $name@$version — already published"
+              skipped=$((skipped + 1))
+              continue
+            fi
+            args=(publish "./$file" --access public)
+            if [ "$DRY_RUN" = "true" ]; then
+              args+=(--dry-run)
+            fi
+            echo "::group::npm ${args[*]}"
+            npm "${args[@]}"
+            echo "::endgroup::"
+            published=$((published + 1))
+          done < <(jq -r '.[] | [.name, .version, .file] | @tsv' manifest.json)
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "dry run — would publish $published, skipped $skipped already published"
+          else
+            echo "published $published, skipped $skipped already published"
+          fi
