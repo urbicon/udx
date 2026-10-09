@@ -83,12 +83,13 @@ commit-msg:
 function renderBiome(): string {
   // ALWAYS exclude `.svelte` — Biome doesn't process Svelte (Prettier + svelte-check handle that).
   // Even the non-svelte monorepo root needs the exclusion, otherwise `biome check .` trips over
-  // `.svelte` in sub-packages. The CHANGELOG exclusion from biome-base must be repeated, since
-  // `files.includes` overrides the base.
+  // `.svelte` in sub-packages. Exclusions only: `extends` merges `files.includes` with biome-base's,
+  // which already opens with `**` (and excludes the CHANGELOG) — a second leading `**` here is an
+  // error (`noBiomeFirstException`).
   const config: Record<string, unknown> = {
     $schema: BIOME_SCHEMA,
     extends: ['@urbicon-ui/biome-config/biome-base.json'],
-    files: { includes: ['**', '!**/*.svelte', '!**/CHANGELOG.md'] }
+    files: { includes: ['!**/*.svelte'] }
   };
   return `${JSON.stringify(config, null, 2)}\n`;
 }

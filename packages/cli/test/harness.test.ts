@@ -448,6 +448,18 @@ describe('git-hooks: core.hooksPath detection', () => {
   });
 });
 
+describe('biome template', () => {
+  test('files.includes holds only exclusions (no leading ** next to the base)', () => {
+    // Regression: biome-base already opens with `**` and `extends` merges the lists — a second
+    // leading `**` is a Biome error (noBiomeFirstException).
+    const tpl = FILE_TEMPLATES.find((t) => t.id === 'biome');
+    const out = JSON.parse(tpl?.render(detectContext(project({ name: 'x' }))) ?? '{}');
+    const includes: string[] = out.files.includes;
+    expect(includes).toContain('!**/*.svelte');
+    expect(includes.every((p) => p.startsWith('!'))).toBe(true);
+  });
+});
+
 describe('prettierignore template', () => {
   test('uses a gitignore-compatible re-include (no ineffective **/* + !**/*.svelte)', () => {
     // Regression: a re-include does not take effect below excluded directories —
